@@ -1,0 +1,67 @@
+"""
+Compute the Distribution Rate (DR) of GHZ states over multiple Monte Carlo trials.
+- DR = average number of GHZ states per timeslot
+- DR = (1/M) * sum_i(1/T_i) where T_i is the number of timeslots to generate a GHZ
+- If a run fails to generate GHZ in 5000 timeslots, it is discarded
+- If >5% of runs fail, the whole DR value is discarded
+"""
+
+
+class EntanglementDistribution:
+    def __init__(self):
+        self.trials = []           # successful trials: list of T_i (int)
+        self.failed_trials = 0     # number of failed attempts\
+        self.cost_list = []
+
+    def record_trial(self, time_to_success, cost):
+        """Record the number of timeslots needed to generate GHZ in one simulation."""
+        if time_to_success == 0:
+            self.failed_trials += 1
+        else:
+            self.trials.append(time_to_success)
+            self.cost_list.append(cost)
+
+    def failure_rate(self):
+        total = len(self.trials) + self.failed_trials
+        return self.failed_trials / total if total else 0.0
+
+    def average_dr(self):
+        if not self.trials:
+            return 0.0
+        return sum([1 / t for t in self.trials]) / len(self.trials)
+
+    def average_cost(self):
+        if not self.cost_list:
+            return 0.0
+        return sum([cost for cost in self.cost_list]) / len(self.cost_list)
+
+    def is_valid_result(self):
+        return self.failure_rate() <= 0.05
+
+    def summary(self):
+        print(f"  List of successful time slot : {self.trials}")
+        print(f"  List of successful cost :      {self.cost_list}")
+        print(f"  Successful Runs : {len(self.trials)}")
+        print(f"  Failed Runs     : {self.failed_trials}")
+        print(f"  Failure Rate    : {self.failure_rate():.2%}")
+
+        print(f"  DR : {self.average_dr():.6f}")
+        print(f"  cost : {self.average_cost():.6f}")
+
+        if self.is_valid_result():
+            print(f"  DR : {self.average_dr():.6f}")
+            print(f"  cost : {self.average_cost():.6f}")
+
+        else:
+            print("  [!] Too many failures. Discard this datapoint.")
+
+
+if __name__ == "__main__":
+    import random
+
+    distribution = EntanglementDistribution()
+    for _ in range(50):
+        t = random.choice([random.randint(1, 500)] * 95 + [600] * 5)  # ~5% failure
+        distribution.record_trial(t)
+
+    distribution.summary()
