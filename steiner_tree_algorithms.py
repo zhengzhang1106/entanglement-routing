@@ -42,6 +42,10 @@ def has_connecting_tree(subgraph, user_set):
     if len(user_set) <= 1:
         return True
 
+    # Check if all users are present in the subgraph before proceeding
+    if not all(node in subgraph.nodes for node in user_set):
+        return False
+
     # Check if all users are in the same connected component
     try:
         subgraph_of_users = subgraph.subgraph(user_set)
