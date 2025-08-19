@@ -176,7 +176,7 @@ if __name__ == "__main__":
     RANDOM_SEED = 1
     NUM_USERS = 3
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=5, max_timeslot=10)
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.6, memory_size=4, decoherence_time=5, max_timeslot=10)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()

@@ -38,6 +38,30 @@ class EntanglementFusion:
         print(f"[Fusion] GHZ state created among {user_list} via {intermediate_node}")
         return True
 
+    def fuse_users_from_tree(self, user_list, tree_links, current_time, p_op):
+        # The paper assumes a GHZ can be formed if a connecting tree exists.
+        # This method simulates the process of swapping and fusing along the tree.
+        # For simplicity, we assume this is always successful if the links exist.
+
+        # Step 1: Remove all links in the tree and their corresponding memory entries
+        for u, v in tree_links:
+            self._remove_link(u, v)
+            self._release_memory(u, v)
+            self._release_memory(v, u)
+
+        # Step 2: Create a new GHZ link among the users
+        self.link_manager.create_link(user_list, p_op=1, gen_time=current_time, length_km=0, attr="Fusion")
+
+        # Step 3: Update memory for the new GHZ state
+        for u in user_list:
+            for v in user_list:
+                if u != v:
+                    self.network.nodes[u].memory.occupy_memory(v, current_time)
+
+        print(f"[Fusion] GHZ state created among {user_list} via tree")
+
+        return True
+
     def _link_exists(self, u, v):
         for link in self.link_manager.links:
             if u in link.nodes and v in link.nodes:
@@ -45,10 +69,8 @@ class EntanglementFusion:
         return False
 
     def _remove_link(self, u, v):
-        self.link_manager.links = [
-            link for link in self.link_manager.links
-            if not (u in link.nodes and v in link.nodes)
-        ]
+        self.link_manager.links = [link for link in self.link_manager.links if
+                                   tuple(sorted(link.nodes)) != tuple(sorted((u, v)))]
 
     def _release_memory(self, node_id, peer_id):
         mem = self.network.nodes[node_id].memory

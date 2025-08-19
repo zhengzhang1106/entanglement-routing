@@ -1,4 +1,5 @@
 import networkx as nx
+from steiner_tree_algorithms import approximate_steiner_tree
 
 
 class SourcePlacement:
@@ -14,44 +15,11 @@ class SourcePlacement:
             - Construct Steiner Tree (approx) connecting users
             - Place source on each edge in the tree
         """
-        subgraph = self._approximate_steiner_tree(user_set)
+        subgraph = approximate_steiner_tree(self.topo.graph, user_set)
         self.sources = set(subgraph.edges())
         print(f"[SourcePlacement] Sources placed on edges: {self.sources}")
         print(f"[SourcePlacement] Total cost: {self.compute_cost()}")
         return self.sources
-
-    def _approximate_steiner_tree(self, terminals):
-        """
-        Approximate Steiner Tree using metric closure + MST on complete graph.
-        Returns a subgraph (nx.Graph) of the original topology.
-        """
-        G = self.topo.graph
-        # Step 1: Metric closure - complete graph with shortest path lengths
-        metric_closure = nx.Graph()
-        for u in terminals:
-            for v in terminals:
-                if u == v:
-                    continue
-                try:
-                    length = nx.shortest_path_length(G, u, v, weight='length')
-                    metric_closure.add_edge(u, v, weight=length)
-                except nx.NetworkXNoPath:
-                    continue
-
-        # Step 2: MST of the complete terminal graph
-        mst = nx.minimum_spanning_tree(metric_closure, weight='weight')
-
-        # Step 3: Map MST edges back to paths in original graph
-        steiner_tree = nx.Graph()
-        for u, v in mst.edges():
-            try:
-                path = nx.shortest_path(G, source=u, target=v, weight='length')
-                for i in range(len(path) - 1):
-                    steiner_tree.add_edge(path[i], path[i + 1])
-            except nx.NetworkXNoPath:
-                continue
-
-        return steiner_tree
 
     def compute_cost(self):
         return len(self.sources) * 2

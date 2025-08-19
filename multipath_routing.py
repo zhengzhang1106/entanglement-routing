@@ -18,6 +18,7 @@ from quantum_network import QuantumNetwork
 from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from quantum_source_placement import SourcePlacement
+from steiner_tree_algorithms import approximate_steiner_tree, has_connecting_tree
 
 
 class MPGreedyEntanglementRouting:
@@ -106,6 +107,121 @@ class MPGreedyEntanglementRouting:
                 if success:
                     print(f"[Fusion] GHZ generated at vc={vc}")
                     hasGHZ = True
+
+        return time_slot, cost
+
+
+class MPCooperativeRouting:
+    def __init__(self, network, user_set, p_op):
+        self.p_op = p_op
+        self.network = network
+        self.G = self.network.topo.graph  # original physical topology
+        self.link_manager = network.entanglementlink_manager
+        self.user_set = user_set
+        self.swapping = EntanglementSwapping(self.network)
+        self.fusion = EntanglementFusion(self.network)
+
+    def simulate_entanglement_links(self, deployed_sources, time_slot):
+        for u, v in deployed_sources:
+            if self._has_entanglement_link(u, v):
+                continue
+            self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
+
+    def _has_entanglement_link(self, u, v):
+        for link in self.link_manager.links:
+            if u in link.nodes and v in link.nodes:
+                return True
+        return False
+
+    def mpc_routing(self, max_timeslot):
+        time_slot = 0
+        hasGHZ = False
+        source = SourcePlacement(self.network.topo)
+        deployed_sources = source.place_sources_for_request(self.user_set)
+        cost = source.compute_cost()
+
+        while not hasGHZ:
+            time_slot += 1
+            print(f"\n[MPCooperative] [Time slot {time_slot}]")
+            if time_slot > max_timeslot:
+                time_slot = 0
+                break
+
+            self.network.purge_all_expired(time_slot)
+            self.simulate_entanglement_links(deployed_sources, time_slot)
+
+            G_prime = self.link_manager.get_subgraph(current_time=time_slot)
+
+            if has_connecting_tree(G_prime, self.user_set):
+                R = approximate_steiner_tree(G_prime, self.user_set)
+                used_links = set(R.edges())
+
+                success = self.fusion.fuse_users_from_tree(user_list=self.user_set, tree_links=used_links, current_time=time_slot, p_op=self.p_op)
+                if success:
+                    print(f"[Fusion] GHZ generated via a Steiner tree.")
+                    hasGHZ = True
+
+        return time_slot, cost
+
+
+class MPPackingRouting:
+    def __init__(self, network, user_set, p_op):
+        self.p_op = p_op
+        self.network = network
+        self.G = self.network.topo.graph
+        self.link_manager = network.entanglementlink_manager
+        self.user_set = user_set
+        self.swapping = EntanglementSwapping(self.network)
+        self.fusion = EntanglementFusion(self.network)
+
+    def simulate_entanglement_links(self, deployed_sources, time_slot):
+        for u, v in deployed_sources:
+            if self._has_entanglement_link(u, v):
+                continue
+            self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
+
+    def _has_entanglement_link(self, u, v):
+        for link in self.link_manager.links:
+            if u in link.nodes and v in link.nodes:
+                return True
+        return False
+
+    def mpp_routing(self, max_timeslot):
+        time_slot = 0
+        hasGHZ = False
+        source = SourcePlacement(self.network.topo)
+        deployed_sources = source.place_sources_for_request(self.user_set)
+        cost = source.compute_cost()
+
+        while not hasGHZ:
+            time_slot += 1
+            print(f"\n[MPPacking] [Time slot {time_slot}]")
+            if time_slot > max_timeslot:
+                time_slot = 0
+                break
+
+            self.network.purge_all_expired(time_slot)
+            self.simulate_entanglement_links(deployed_sources, time_slot)
+
+            num_ghz_in_slot = 0
+            G_prime = self.link_manager.get_subgraph(current_time=time_slot)
+
+            while has_connecting_tree(G_prime, self.user_set):
+                R = approximate_steiner_tree(G_prime, self.user_set)
+                used_links = set(R.edges())
+
+                success = self.fusion.fuse_users_from_tree(self.user_set, used_links, time_slot, self.p_op)
+
+                if success:
+                    print(f"[Fusion] GHZ generated via a Steiner tree. (Packing #{num_ghz_in_slot + 1})")
+                    num_ghz_in_slot += 1
+                    self.link_manager.remove_links_by_nodes(list(used_links))
+                    G_prime = self.link_manager.get_subgraph(current_time=time_slot)
+                else:
+                    break
+
+            if num_ghz_in_slot > 0:
+                hasGHZ = True
 
         return time_slot, cost
 

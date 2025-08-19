@@ -65,6 +65,10 @@ class EntanglementLinkManager:
         self.purge_expired_links(current_time)
         return self.subG
 
+    def remove_links_by_nodes(self, nodes_to_remove):
+        self.links = [link for link in self.links if
+                      tuple(sorted(link.nodes)) not in [tuple(sorted(n)) for n in nodes_to_remove]]
+
     def show_active_links(self, current_time):
         self.purge_expired_links(current_time)
         print(f"Active Entanglement Links at [time slot {current_time}]:")
