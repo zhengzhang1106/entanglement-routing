@@ -117,7 +117,7 @@ class EventSimulator:
         for i, user_set in enumerate(user_sets):
             trial_num = i + 1
             print("\n" + "=" * 100)
-            print(f"[[Trial {trial_num} for {routing_method}]] Running...")
+            print(f"[Trial {trial_num} for {routing_method}] Running...")
             print(f"[user_set] {user_set}")
 
             self.network.reset()
@@ -172,11 +172,11 @@ if __name__ == "__main__":
                 down = node + m
                 edge_list.append((node, down, length))
 
-    NUM_TRIALS = 100
+    NUM_TRIALS = 500
     RANDOM_SEED = 1
     NUM_USERS = 3
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.9, memory_size=4, decoherence_time=5, max_timeslot=10)
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=5, max_timeslot=10)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()

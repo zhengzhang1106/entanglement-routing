@@ -60,7 +60,7 @@ class EntanglementSwapping:
             }
 
             # 3. Create new entanglement link A-C. Occupy memory of nodeA and nodeC
-            self.network.attempt_entanglement(a, c, p_op=p_op, gen_time=current_time, attr="Swapping")
+            self.network.attempt_entanglement(a, c, p_op=1, gen_time=current_time, attr="Swapping")
 
             print(f"[Swapping] Performed swapping at node {b}: {a} <-> {c} (via {b})")
 

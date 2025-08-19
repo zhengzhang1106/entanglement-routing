@@ -27,7 +27,7 @@ class EntanglementFusion:
                 self._release_memory(intermediate_node, u)
 
         # Step 3: Create new GHZ link among users
-        self.link_manager.create_link(user_list, p_op=p_op, gen_time=current_time, length_km=0, attr="Fusion")
+        self.link_manager.create_link(user_list, p_op=1, gen_time=current_time, length_km=0, attr="Fusion")
 
         # Step 4: Update memory (pairwise occupancy)
         for u in user_list:

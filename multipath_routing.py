@@ -52,6 +52,10 @@ class MPGreedyEntanglementRouting:
         for s in self.user_set:
             if s == v:
                 continue
+            if v not in subgraph.nodes or s not in subgraph.nodes:
+                paths[s] = []
+                print(f"  No path to {s} because either {v} or {s} is not in the subgraph.")
+                continue
             try:
                 path = nx.shortest_path(subgraph, source=v, target=s)
                 paths[s] = path
