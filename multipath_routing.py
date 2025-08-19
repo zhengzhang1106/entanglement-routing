@@ -142,7 +142,7 @@ class MPCooperativeRouting:
 
         while not hasGHZ:
             time_slot += 1
-            print(f"\n[MPCooperative] [Time slot {time_slot}]")
+            print(f"\n[MultiplePathCooperative] [Time slot {time_slot}]")
             if time_slot > max_timeslot:
                 time_slot = 0
                 break
@@ -192,10 +192,11 @@ class MPPackingRouting:
         source = SourcePlacement(self.network.topo)
         deployed_sources = source.place_sources_for_request(self.user_set)
         cost = source.compute_cost()
+        num_ghz_in_slot = 0
 
         while not hasGHZ:
             time_slot += 1
-            print(f"\n[MPPacking] [Time slot {time_slot}]")
+            print(f"\n[MultiplePathPacking] [Time slot {time_slot}]")
             if time_slot > max_timeslot:
                 time_slot = 0
                 break
@@ -203,7 +204,6 @@ class MPPackingRouting:
             self.network.purge_all_expired(time_slot)
             self.simulate_entanglement_links(deployed_sources, time_slot)
 
-            num_ghz_in_slot = 0
             G_prime = self.link_manager.get_subgraph(current_time=time_slot)
 
             while has_connecting_tree(G_prime, self.user_set):
@@ -223,7 +223,7 @@ class MPPackingRouting:
             if num_ghz_in_slot > 0:
                 hasGHZ = True
 
-        return time_slot, cost
+        return time_slot, cost, num_ghz_in_slot
 
 
 if __name__ == "__main__":

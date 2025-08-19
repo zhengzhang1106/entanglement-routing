@@ -9,16 +9,16 @@ Compute the Distribution Rate (DR) of GHZ states over multiple Monte Carlo trial
 
 class EntanglementDistribution:
     def __init__(self):
-        self.trials = []           # successful trials: list of T_i (int)
+        self.trials = []           # successful trials: list of (time_slot, num_ghz)
         self.failed_trials = 0     # number of failed attempts\
         self.cost_list = []
 
-    def record_trial(self, time_to_success, cost):
+    def record_trial(self, time_to_success, cost, num_ghz=1):
         """Record the number of timeslots needed to generate GHZ in one simulation."""
         if time_to_success == 0:
             self.failed_trials += 1
         else:
-            self.trials.append(time_to_success)
+            self.trials.append((time_to_success, num_ghz))
             self.cost_list.append(cost)
 
     def failure_rate(self):
@@ -28,7 +28,7 @@ class EntanglementDistribution:
     def average_dr(self):
         if not self.trials:
             return 0.0
-        return sum([1 / t for t in self.trials]) / len(self.trials)
+        return sum([num_ghz / t for t, num_ghz in self.trials]) / len(self.trials)
 
     def average_cost(self):
         if not self.cost_list:
@@ -39,7 +39,8 @@ class EntanglementDistribution:
         return self.failure_rate() <= 0.05
 
     def summary(self):
-        print(f"  List of successful time slot : {self.trials}")
+        print(f"  List of successful time slot : {[t for t, _ in self.trials]}")
+        print(f"  List of successful ghz count: {[n for _, n in self.trials]}")
         print(f"  List of successful cost :      {self.cost_list}")
         print(f"  Successful Runs : {len(self.trials)}")
         print(f"  Failed Runs     : {self.failed_trials}")
