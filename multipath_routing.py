@@ -21,7 +21,7 @@ from quantum_source_placement import SourcePlacement
 from steiner_tree_algorithms import approximate_steiner_tree, has_connecting_tree
 
 
-class MPGreedyEntanglementRouting:
+class MPGreedyRouting:
     def __init__(self, network, user_set, p_op):
         self.p_op = p_op
         self.network = network
@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
     net.show_network_status(current_time=0)
 
-    MPGrouting = MPGreedyEntanglementRouting(net, users, p_op=0.9)
+    MPGrouting = MPGreedyRouting(net, users, p_op=0.9)
     print("\n[MultiPath_G+ Routing Test]")
     final_time, cost = MPGrouting.mp_greedy_routing(vc, max_timeslot)
     if final_time:

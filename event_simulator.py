@@ -3,7 +3,7 @@ import networkx as nx
 from network_request import RequestGenerator
 from quantum_network import QuantumNetwork
 from singlepath_routing import SPEntanglementRouting
-from multipath_routing import MPGreedyEntanglementRouting
+from multipath_routing import MPGreedyRouting, MPCooperativeRouting, MPPackingRouting
 from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from entanglement_distribution import EntanglementDistribution
@@ -106,9 +106,30 @@ class EventSimulator:
             return 0, 0
 
         # paths: the routing solution computed for the selected central node changes with subgraph
-        MPGrouting = MPGreedyEntanglementRouting(self.network, user_set, p_op)
+        MPGrouting = MPGreedyRouting(self.network, user_set, p_op)
         time_to_success, cost = MPGrouting.mp_greedy_routing(vc, self.max_timeslot)
         return time_to_success, cost
+
+    def run_single_trial_MPC(self, user_set, p_op):
+        """
+        Run simulation until GHZ is formed for the given user set or until max timeslot
+        using the MP-C protocol.
+        """
+        # Unlike SP/MPG, MPC does not require a pre-selected center node.
+        # Source placement is still based on the Steiner tree heuristic.
+        MPCrouting = MPCooperativeRouting(self.network, user_set, p_op)
+        time_to_success, cost = MPCrouting.mpc_routing(self.max_timeslot)
+        return time_to_success, cost
+
+    def run_single_trial_MPP(self, user_set, p_op):
+        """
+        Run simulation until GHZ is formed for the given user set or until max timeslot
+        using the MP-P protocol.
+        """
+        # MPP also does not require a pre-selected center node.
+        MPProuting = MPPackingRouting(self.network, user_set, p_op)
+        time_to_success, cost, num_ghz = MPProuting.mpp_routing(self.max_timeslot)
+        return time_to_success, cost, num_ghz
 
     def run_trials(self, seed, user_sets, routing_method, dr_object):
         if seed is not None:
@@ -133,6 +154,10 @@ class EventSimulator:
                 time_to_success, cost = self.run_single_trial_SP(user_set, self.p_op)
             elif routing_method == 'MPG':
                 time_to_success, cost = self.run_single_trial_MPG(user_set, self.p_op)
+            elif routing_method == 'MPC':
+                time_to_success, cost = self.run_single_trial_MPC(user_set, self.p_op)
+            elif routing_method == 'MPP':
+                time_to_success, cost, num_ghz = self.run_single_trial_MPP(user_set, self.p_op)
             else:
                 raise ValueError(f"Unknown routing_method: {routing_method}")
 
@@ -180,6 +205,8 @@ if __name__ == "__main__":
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()
+    dr_mpc = EntanglementDistribution()
+    dr_mpp = EntanglementDistribution()
 
     print(f"Generating {NUM_TRIALS} user sets for the experiment...")
     random.seed(RANDOM_SEED)
@@ -200,6 +227,18 @@ if __name__ == "__main__":
     print("#" * 60)
     simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', seed=RANDOM_SEED, dr_object=dr_mpg)
 
+    # Run Multi-Path Cooperative trials
+    print("\n" + "#" * 60)
+    print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
+    print("#" * 60)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', seed=RANDOM_SEED, dr_object=dr_mpc)
+
+    # Run Multi-Path Packing trials
+    print("\n" + "#" * 60)
+    print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
+    print("#" * 60)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', seed=RANDOM_SEED, dr_object=dr_mpp)
+
     # --- Final Summary ---
     print("\n\n" + "*" * 50)
     print("********** FINAL SIMULATION SUMMARY   **********")
@@ -209,3 +248,7 @@ if __name__ == "__main__":
     dr_sp.summary()
     print("\n--- DR Summary for MultiPath Greedy (MPG) Routing ---")
     dr_mpg.summary()
+    print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
+    dr_mpc.summary()
+    print("\n--- DR Summary for MultiPath Packing (MPP) Routing ---")
+    dr_mpp.summary()
