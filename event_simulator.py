@@ -131,7 +131,7 @@ class EventSimulator:
         time_to_success, cost, num_ghz = MPProuting.mpp_routing(self.max_timeslot)
         return time_to_success, cost, num_ghz
 
-    def run_trials(self, seed, user_sets, routing_method, dr_object):
+    def run_trials(self, seed, user_sets, routing_method, source_method, dr_object):
         if seed is not None:
             random.seed(seed)
 
@@ -144,11 +144,13 @@ class EventSimulator:
             self.network.reset()
 
             source = SourcePlacement(self.topo)
-            sources = source.place_sources_for_request(user_set)
+            sources = source.place_sources_for_request(user_set, source_method)
             for u, v in sources:
                 self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=0)
 
             self.network.show_network_status(current_time=0)
+
+            num_ghz = 1  # Default for SP, MPG, MPC
 
             if routing_method == 'SP':
                 time_to_success, cost = self.run_single_trial_SP(user_set, self.p_op)
@@ -166,7 +168,7 @@ class EventSimulator:
             else:
                 print(f"[Trial {trial_num}] ❌ Failed to generate GHZ for {routing_method} within time limit.")
 
-            dr_object.record_trial(time_to_success, cost)
+            dr_object.record_trial(time_to_success, cost, num_ghz)
 
             # self.DR.record_trial(time_to_success, cost)
 
@@ -182,7 +184,7 @@ if __name__ == "__main__":
         6 —— 7 —— 8
     """
 
-    m = 3
+    m = 5
     length = 10
     edge_list = []
     for row in range(m):
@@ -197,11 +199,12 @@ if __name__ == "__main__":
                 down = node + m
                 edge_list.append((node, down, length))
 
-    NUM_TRIALS = 500
+    NUM_TRIALS = 200
     RANDOM_SEED = 1
     NUM_USERS = 3
+    SOURCE_METHOD = "all_edges"
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.6, memory_size=4, decoherence_time=5, max_timeslot=10)
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=3, max_timeslot=500)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()
@@ -219,25 +222,25 @@ if __name__ == "__main__":
     print("\n" + "#" * 60)
     print("###   STARTING SINGLE-PATH (SP) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', seed=RANDOM_SEED, dr_object=dr_sp)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_sp)
 
     # Run Multi-Path Greedy trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH GREEDY (MPG) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', seed=RANDOM_SEED, dr_object=dr_mpg)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpg)
 
     # Run Multi-Path Cooperative trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', seed=RANDOM_SEED, dr_object=dr_mpc)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpc)
 
     # Run Multi-Path Packing trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', seed=RANDOM_SEED, dr_object=dr_mpp)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpp)
 
     # --- Final Summary ---
     print("\n\n" + "*" * 50)
@@ -246,9 +249,12 @@ if __name__ == "__main__":
 
     print("\n--- DR Summary for SinglePath (SP) Routing ---")
     dr_sp.summary()
+
     print("\n--- DR Summary for MultiPath Greedy (MPG) Routing ---")
     dr_mpg.summary()
+
     print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
     dr_mpc.summary()
+
     print("\n--- DR Summary for MultiPath Packing (MPP) Routing ---")
     dr_mpp.summary()

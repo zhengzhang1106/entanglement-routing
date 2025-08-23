@@ -35,6 +35,14 @@ class EntanglementDistribution:
             return 0.0
         return sum([cost for cost in self.cost_list]) / len(self.cost_list)
 
+    def cost_effiency(self):
+        if not self.trials and not self.cost_list:
+            return 0.0
+        cost_effiency = []
+        for i in range(len(self.trials)):
+            cost_effiency.append(self.trials[i][1] / self.trials[i][0] / self.cost_list[i])
+        return sum([effiency for effiency in cost_effiency]) / len(cost_effiency)
+
     def is_valid_result(self):
         return self.failure_rate() <= 0.05
 
@@ -48,6 +56,7 @@ class EntanglementDistribution:
 
         print(f"  DR : {self.average_dr():.6f}")
         print(f"  cost : {self.average_cost():.6f}")
+        print(f"  cost_effiency: {self.cost_effiency():.6f}")
 
         if self.is_valid_result():
             print(f"  DR : {self.average_dr():.6f}")
