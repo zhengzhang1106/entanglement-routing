@@ -11,11 +11,12 @@ from quantum_source_placement import SourcePlacement
 
 
 class EventSimulator:
-    def __init__(self, edge_list, memory_size, p_op, decoherence_time, num_users=3, max_timeslot=500):
+    def __init__(self, edge_list, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
         self.p_op = p_op
         self.num_users = num_users
         self.max_timeslot = max_timeslot
-        self.network = QuantumNetwork(edge_list=edge_list, memory_size=memory_size, decoherence_time=decoherence_time)
+        self.max_per_edge = max_per_edge
+        self.network = QuantumNetwork(edge_list=edge_list, max_per_edge=self.max_per_edge, decoherence_time=decoherence_time)
         self.link_manager = self.network.entanglementlink_manager
         self.topo = self.network.topo
         self.user_gen = RequestGenerator(self.topo.get_nodes())
@@ -131,7 +132,7 @@ class EventSimulator:
         time_to_success, cost, num_ghz = MPProuting.mpp_routing(self.max_timeslot)
         return time_to_success, cost, num_ghz
 
-    def run_trials(self, seed, user_sets, routing_method, source_method, dr_object):
+    def run_trials(self, seed, user_sets, routing_method, source_method, dr_object, cost_budget):
         if seed is not None:
             random.seed(seed)
 
@@ -144,7 +145,7 @@ class EventSimulator:
             self.network.reset()
 
             source = SourcePlacement(self.topo)
-            sources = source.place_sources_for_request(user_set, source_method)
+            sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,max_per_edge=self.max_per_edge)
             for u, v in sources:
                 self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=0)
 
@@ -184,7 +185,7 @@ if __name__ == "__main__":
         6 —— 7 —— 8
     """
 
-    m = 5
+    m = 4
     length = 10
     edge_list = []
     for row in range(m):
@@ -203,8 +204,10 @@ if __name__ == "__main__":
     RANDOM_SEED = 1
     NUM_USERS = 3
     SOURCE_METHOD = "all_edges"
+    # COST_BUDGET = 20
+    COST_BUDGET = None
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=3, max_timeslot=200)
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.9, max_per_edge=2, decoherence_time=3, max_timeslot=200)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()
@@ -222,25 +225,25 @@ if __name__ == "__main__":
     print("\n" + "#" * 60)
     print("###   STARTING SINGLE-PATH (SP) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_sp)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_sp, cost_budget=COST_BUDGET)
 
     # Run Multi-Path Greedy trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH GREEDY (MPG) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpg)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpg, cost_budget=COST_BUDGET)
 
     # Run Multi-Path Cooperative trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpc)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpc, cost_budget=COST_BUDGET)
 
     # Run Multi-Path Packing trials
     print("\n" + "#" * 60)
     print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpp)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpp, cost_budget=COST_BUDGET)
 
     # --- Final Summary ---
     print("\n\n" + "*" * 50)

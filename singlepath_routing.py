@@ -44,7 +44,8 @@ class SPEntanglementRouting:
 
     def has_shared_bell_pair(self, user, vc):
         mem = self.network.nodes[user].memory.memory_storage
-        return any(peer == vc for (peer, _) in mem)
+        # Check if the memory for user has any links to vc
+        return vc in mem and len(mem[vc]) > 0
 
     def sp_routing(self, vc, paths, max_timeslot):
         time_slot = 0

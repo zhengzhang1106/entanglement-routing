@@ -24,7 +24,7 @@ Quantum Node
         - get_memory_usage(self)
         - show_node_status(self, current_time)
 """
-
+import networkx as nx
 from network_topology import Topology
 from quantum_memory import QuantumMemory
 
@@ -40,9 +40,9 @@ class QuantumChannel:
 
 
 class QuantumNode:
-    def __init__(self, node_id, memory_size=4, decoherence_time=10):
+    def __init__(self, node_id, max_per_edge=1, decoherence_time=10):
         self.node_id = node_id
-        self.memory = QuantumMemory(node_id=node_id, size=memory_size, decoherence_time=decoherence_time)
+        self.memory = QuantumMemory(node_id=node_id, max_per_edge=max_per_edge, decoherence_time=decoherence_time)
         self.channels = {}  # key: (node_id, peer_id), value: QuantumChannel
 
     def add_channel(self, node_id, peer_id, length_km):
@@ -52,14 +52,17 @@ class QuantumNode:
         return self.channels.get((node_id, peer_id), None)
 
     # Called after entanglement link is successfully created, update the memory usage
-    def node_record_entanglement(self, peer_id, gen_time_slot):
-        return self.memory.occupy_memory(peer_id, gen_time=gen_time_slot)
+    def node_record_entanglement(self, peer_id, link_id, gen_time_slot):
+        return self.memory.occupy_memory(peer_id, link_id, gen_time=gen_time_slot)
 
     def node_delete_entanglement(self, current_time):
         self.memory.release_memory(current_time)
 
     def get_memory_usage(self):
-        return len(self.memory.memory_storage)
+        total_usage = 0
+        for links in self.memory.memory_storage.values():
+            total_usage += len(links)
+        return total_usage
 
     # show the memory and the connected channel of the node
     def show_node_status(self, current_time):
@@ -82,13 +85,13 @@ if __name__ == "__main__":
     topo = Topology(edge_list)
     topo.show_topology()
 
-    nodeB = QuantumNode(node_id="B", memory_size=4, decoherence_time=5)
+    nodeB = QuantumNode(node_id="B", max_per_edge=1, decoherence_time=5)
     for u, v in topo.get_edges():
         if u == "B" or v == "B":
             length_km = topo.get_edge_length(u, v)
             nodeB.add_channel(u, v, length_km)
 
-    nodeB.node_record_entanglement("A", 0)
-    nodeB.node_record_entanglement("C", 5)
+    nodeB.node_record_entanglement("A", 0, 1)
+    nodeB.node_record_entanglement("C", 5, 1)
     nodeB.show_node_status(3)
     nodeB.show_node_status(9)

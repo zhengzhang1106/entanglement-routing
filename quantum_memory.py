@@ -22,39 +22,51 @@ Note:
     Fidelity decay (exponential or linear) is optional and currently disabled.
 """
 
-
 import math
 
 
 class QuantumMemory:
-    def __init__(self, node_id, size=4, decoherence_time=10, fidelity_decay=None, decay_rate=0.01):
+    def __init__(self, node_id, max_per_edge=1, decoherence_time=10, fidelity_decay=None, decay_rate=0.01):
         self.node_id = node_id
-        self.size = size
+        self.max_per_edge = max_per_edge
         self.decoherence_time = decoherence_time
         self.fidelity_decay = fidelity_decay
         self.decay_rate = decay_rate
-        self.memory_storage = {}  # key: (peer_id, gen_time), value: fidelity
+        # Memory is now managed per peer (i.e., per edge)
+        # Structure: {peer_id: [(link_id, gen_time), ...]}
+        self.memory_storage = {}
 
-    def occupy_memory(self, peer_id, gen_time, fidelity=1.0):
-        if len(self.memory_storage) >= self.size:
-            print("Not enough memory!")
+    def occupy_memory(self, peer_id, link_id, gen_time, fidelity=1.0):
+        # Ensure the peer has an entry in memory_storage
+        if peer_id not in self.memory_storage:
+            self.memory_storage[peer_id] = []
+
+        # Check if the memory for this specific edge is full
+        if len(self.memory_storage[peer_id]) >= self.max_per_edge:
+            # print(f"Not enough memory on edge to {peer_id}!")
             return False
-        self.memory_storage[(peer_id, gen_time)] = fidelity
+
+        self.memory_storage[peer_id].append((link_id, gen_time, fidelity))
         return True
 
     def release_memory(self, current_time):
-        self.memory_storage = {
-            (peer_id, gen_time): f
-            for (peer_id, gen_time), f in self.memory_storage.items()
-            if current_time - gen_time < self.decoherence_time
-        }
+        for peer_id in list(self.memory_storage.keys()):
+            # Filter out expired links for each peer
+            self.memory_storage[peer_id] = [
+                (link_id, gen_time, fidelity)
+                for link_id, gen_time, fidelity in self.memory_storage[peer_id]
+                if current_time - gen_time < self.decoherence_time
+            ]
+            # Remove peer from memory_storage if no links are active
+            if not self.memory_storage[peer_id]:
+                del self.memory_storage[peer_id]
 
     def show_memory(self, current_time):
         self.release_memory(current_time)
-        print(f"  Memory Size: {self.size}, Memory Usage: {len(self.memory_storage)}")
-        for (peer_id, gen_time), _ in self.memory_storage.items():
-            f = self.compute_fidelity(gen_time, current_time)
-            print(f"  Peer_id: {peer_id}, Gen_time: {gen_time}, Fidelity: {f:.2f}")
+        print(f"  Memory (Max per edge: {self.max_per_edge}) Content at [time slot {current_time}]")
+        for peer_id, links in self.memory_storage.items():
+            for link_id, gen_time, fidelity in links:
+                print(f"    Peer_id: {peer_id}, Link_id: {link_id}, Gen_time: {gen_time}, Fidelity: {fidelity:.2f}")
 
     def compute_fidelity(self, gen_time, current_time):
         if self.fidelity_decay is None:
@@ -67,10 +79,10 @@ class QuantumMemory:
 
 
 if __name__ == "__main__":
-    memory = QuantumMemory(node_id="A", size=3, decoherence_time=8, decay_rate=0.05)
+    memory = QuantumMemory(node_id="A", max_per_edge=3, decoherence_time=8, decay_rate=0.05)
 
-    memory.occupy_memory("B", 0)
-    memory.occupy_memory("C", 5)
-    memory.occupy_memory("D", 7)
+    memory.occupy_memory("B", 0, 1)
+    memory.occupy_memory("C", 5, 1)
+    memory.occupy_memory("D", 7, 1)
     memory.show_memory(current_time=7)
     memory.show_memory(current_time=9)

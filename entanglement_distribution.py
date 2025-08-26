@@ -48,7 +48,7 @@ class EntanglementDistribution:
 
     def summary(self):
         print(f"  List of successful time slot : {[t for t, _ in self.trials]}")
-        print(f"  List of successful ghz count: {[n for _, n in self.trials]}")
+        print(f"  List of successful ghz count : {[n for _, n in self.trials]}")
         print(f"  List of successful cost :      {self.cost_list}")
         print(f"  Successful Runs : {len(self.trials)}")
         print(f"  Failed Runs     : {self.failed_trials}")
@@ -56,7 +56,7 @@ class EntanglementDistribution:
 
         print(f"  DR : {self.average_dr():.6f}")
         print(f"  cost : {self.average_cost():.6f}")
-        print(f"  cost_effiency: {self.cost_effiency():.6f}")
+        print(f"  cost_effiency : {self.cost_effiency():.6f}")
 
         if self.is_valid_result():
             print(f"  DR : {self.average_dr():.6f}")

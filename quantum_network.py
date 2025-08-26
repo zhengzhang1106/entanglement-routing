@@ -4,13 +4,14 @@ from entanglement_link import EntanglementLinkManager
 
 
 class QuantumNetwork:
-    def __init__(self, edge_list, memory_size=4, decoherence_time=10):
+    def __init__(self, edge_list, max_per_edge=1, decoherence_time=10):
         self.topo = Topology(edge_list)
         self.nodes = {}
         self.entanglementlink_manager = EntanglementLinkManager(decoherence_time)
+        self.max_per_edge = max_per_edge
 
         for node_id in self.topo.get_nodes():
-            self.nodes[node_id] = QuantumNode(node_id, memory_size, decoherence_time)
+            self.nodes[node_id] = QuantumNode(node_id, max_per_edge, decoherence_time)
 
         for u, v in self.topo.get_edges():
             length_km = self.topo.get_edge_length(u, v)
@@ -21,16 +22,15 @@ class QuantumNetwork:
         if attr is None:
             length_km = self.topo.get_edge_length(node1, node2)
         else:
-            # Assuming 100% successfully create entanglement links in swapping and fusion
             length_km = 0
             p_op = 1
 
-        success = self.entanglementlink_manager.create_link([node1, node2], p_op=p_op, gen_time=gen_time, length_km=length_km, attr=attr, flag=flag)
+        success, link_id = self.entanglementlink_manager.create_link([node1, node2], p_op=p_op, gen_time=gen_time, length_km=length_km, attr=attr, flag=flag)
 
-        if success and self.nodes[node1].node_record_entanglement(peer_id=node2, gen_time_slot=gen_time) \
-           and self.nodes[node2].node_record_entanglement(peer_id=node1, gen_time_slot=gen_time):
-            return True
-        return False
+        if success and self.nodes[node1].node_record_entanglement(peer_id=node2, link_id=link_id, gen_time_slot=gen_time) \
+           and self.nodes[node2].node_record_entanglement(peer_id=node1, link_id=link_id, gen_time_slot=gen_time):
+            return True, link_id
+        return False, None
 
     def show_network_status(self, current_time):  # update the memory and the entanglement link
         print("\n")
@@ -60,7 +60,7 @@ if __name__ == "__main__":
         ("C", "D", 20)
     ]
 
-    net = QuantumNetwork(edge_list=edge_list, memory_size=4, decoherence_time=6)
+    net = QuantumNetwork(edge_list=edge_list, max_per_edge=4, decoherence_time=6)
 
     net.attempt_entanglement("A", "B", p_op=0.9, gen_time=0)
     net.attempt_entanglement("B", "C", p_op=0.9, gen_time=4)

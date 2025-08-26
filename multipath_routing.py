@@ -1,18 +1,3 @@
-"""
-Implements SinglePath Routing algorithm (SP) from the paper:
-"Multiuser Entanglement Distribution in Quantum Networks Using Multipath Routing"
-
-Core steps:
- 1. Select center node (vc) among user set S
- 2. Compute shortest paths from vc to all s in S'
- 3. While GHZ not established:
-     - Simulate entanglement links (via EntanglementLinkManager)
-     - Build entanglement subgraph G'
-     - For each user s not yet connected to vc:
-         - If path exists: perform entanglement swapping along path
-     - If all s connected to vc: perform entanglement fusion
-
-"""
 import networkx as nx
 from quantum_network import QuantumNetwork
 from entanglement_swapping import EntanglementSwapping
@@ -32,24 +17,20 @@ class MPGreedyRouting:
         self.fusion = EntanglementFusion(self.network)
 
     def simulate_entanglement_links(self, deployed_sources, time_slot):
+        # The key change here: no longer check for existing links before attempting.
+        # Each entry in deployed_sources represents a separate source on a given edge.
         for u, v in deployed_sources:
-            if self._has_entanglement_link(u, v):
-                continue
+            # if self._has_entanglement_link(u, v):
+            #     continue
             self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
-    def _has_entanglement_link(self, u, v):
-        for link in self.link_manager.links:
-            if u in link.nodes and v in link.nodes:
-                return True
-        return False
-
-    def has_shared_bell_pair(self, user, vc):
+    def _has_shared_bell_pair(self, user, vc):
         mem = self.network.nodes[user].memory.memory_storage
-        return any(peer == vc for (peer, _) in mem)
+        # Check if the memory for user has any links to vc
+        return vc in mem and len(mem[vc]) > 0
 
     def get_shortest_paths_MP(self, v, subgraph):
         paths = {}
-        # print(f"\n[Routing] Computing shortest paths from center node '{v}' to users {user_set}:")
         for s in self.user_set:
             if s == v:
                 continue
@@ -60,10 +41,8 @@ class MPGreedyRouting:
             try:
                 path = nx.shortest_path(subgraph, source=v, target=s)
                 paths[s] = path
-                # print(f"  Path to {s}: {path}")
             except nx.NetworkXNoPath:
                 paths[s] = []
-                # print(f"  No path to {s}")
         return paths
 
     def mp_greedy_routing(self, vc, max_timeslot):
@@ -75,34 +54,31 @@ class MPGreedyRouting:
 
         while not hasGHZ:
             time_slot = time_slot + 1
-            print("\n")
-            print(f"[MultiplePathGreedy] [Time slot {time_slot}]")
+            print(f"\n[MultiplePathGreedy] [Time slot {time_slot}]")
             if time_slot >= max_timeslot:
                 time_slot = 0
                 break
 
-            # Step 1: Attempt to generate entanglement links over all edges in R
             self.network.purge_all_expired(time_slot)
             self.simulate_entanglement_links(deployed_sources, time_slot)
-            # self.network.show_network_status(current_time=time_slot)
 
             G_prime = self.link_manager.get_subgraph(current_time=time_slot)
-
+            
+            # The logic below needs to be updated to handle multiple links per edge
             paths = self.get_shortest_paths_MP(vc, G_prime)
             print(f"\n[Routing] Selected center: {vc}")
             for s, path in paths.items():
                 print(f"  {vc} -> {s}: {path}")
 
-            # Step 2: For users who do not yet share a Bell pair with center, do swapping
-            S_prime = [u for u in self.user_set if u != vc and not self.has_shared_bell_pair(u, vc)]
+            S_prime = [u for u in self.user_set if u != vc and not self._has_shared_bell_pair(u, vc)]
             for s in S_prime:
                 path = paths.get(s, [])
                 if path:
+                    # Swapping logic needs to handle multiple links per edge
                     self.swapping.entanglement_swapping(path=path, current_time=time_slot, p_op=self.p_op)
 
-            # Step 3: If all users now share Bell pairs with center node, do fusion
             remote_users = [u for u in self.user_set if u != vc]
-            if all(self.has_shared_bell_pair(u, vc) for u in remote_users):
+            if all(self._has_shared_bell_pair(u, vc) for u in remote_users):
                 success = self.fusion.fuse_users(vc, user_list=self.user_set, current_time=time_slot, p_op=self.p_op)
                 if success:
                     print(f"[Fusion] GHZ generated at vc={vc}")
@@ -123,8 +99,8 @@ class MPCooperativeRouting:
 
     def simulate_entanglement_links(self, deployed_sources, time_slot):
         for u, v in deployed_sources:
-            if self._has_entanglement_link(u, v):
-                continue
+            # if self._has_entanglement_link(u, v):
+            #     continue
             self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):
@@ -176,8 +152,8 @@ class MPPackingRouting:
 
     def simulate_entanglement_links(self, deployed_sources, time_slot):
         for u, v in deployed_sources:
-            if self._has_entanglement_link(u, v):
-                continue
+            # if self._has_entanglement_link(u, v):
+            #     continue
             self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):
