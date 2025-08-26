@@ -32,8 +32,8 @@ class SPEntanglementRouting:
 
     def simulate_entanglement_links(self, deployed_sources, time_slot):
         for u, v in deployed_sources:
-            if self._has_entanglement_link(u, v):
-                continue
+            # if self._has_entanglement_link(u, v):
+            #     continue
             self.network.attempt_entanglement(u, v, p_op=0.9, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):

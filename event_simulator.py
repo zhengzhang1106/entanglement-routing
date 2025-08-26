@@ -204,7 +204,7 @@ if __name__ == "__main__":
     NUM_USERS = 3
     SOURCE_METHOD = "all_edges"
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=3, max_timeslot=500)
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.8, memory_size=4, decoherence_time=3, max_timeslot=200)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()
