@@ -15,7 +15,8 @@ class EntanglementLink:
 
         # Calculate link loss and entanglement generation probability
         self.p_loss = self.calculate_loss()
-        self.p_e = self.calculate_entanglement_prob()
+        # self.p_e = self.calculate_entanglement_prob()
+        self.p_e = 0.8
 
     def calculate_loss(self):
         return 1 - 10 ** (-self.loss_coef * self.length_km / 10)

@@ -114,7 +114,8 @@ if __name__ == "__main__":
              2: [1, 2],
              7: [1, 4, 7]}
 
-    net = QuantumNetwork(edge_list=edge_list, memory_size=4, decoherence_time=6)
+    # net = QuantumNetwork(edge_list=edge_list, memory_size=4, decoherence_time=6)
+    net = QuantumNetwork(length_network=3, width_network=3, edge_length_km=3, max_per_edge=4, decoherence_time=6)
 
     source = SourcePlacement(net.topo)
     sources = source.place_sources_for_request(users)

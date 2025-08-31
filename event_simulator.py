@@ -11,12 +11,17 @@ from quantum_source_placement import SourcePlacement
 
 
 class EventSimulator:
-    def __init__(self, edge_list, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
+    # def __init__(self, edge_list, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
+    def __init__(self, length_network, width_network, edge_length_km, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
         self.p_op = p_op
         self.num_users = num_users
         self.max_timeslot = max_timeslot
         self.max_per_edge = max_per_edge
-        self.network = QuantumNetwork(edge_list=edge_list, max_per_edge=self.max_per_edge, decoherence_time=decoherence_time)
+        # self.network = QuantumNetwork(edge_list=edge_list, max_per_edge=self.max_per_edge,
+        #                               decoherence_time=decoherence_time)
+        self.network = QuantumNetwork(length_network=length_network, width_network=width_network,
+                                      edge_length_km=edge_length_km,
+                                      max_per_edge=self.max_per_edge, decoherence_time=decoherence_time)
         self.link_manager = self.network.entanglementlink_manager
         self.topo = self.network.topo
         self.user_gen = RequestGenerator(self.topo.get_nodes())
@@ -145,7 +150,8 @@ class EventSimulator:
             self.network.reset()
 
             source = SourcePlacement(self.topo)
-            sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,max_per_edge=self.max_per_edge)
+            sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,
+                                                       max_per_edge=self.max_per_edge)
             for u, v in sources:
                 self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=0)
 
@@ -185,29 +191,42 @@ if __name__ == "__main__":
         6 —— 7 —— 8
     """
 
-    m = 4
-    length = 10
-    edge_list = []
-    for row in range(m):
-        for col in range(m):
-            node = row * m + col
-            # Right neighbor
-            if col < m - 1:
-                right = node + 1
-                edge_list.append((node, right, length))
-            # Bottom neighbor
-            if row < m - 1:
-                down = node + m
-                edge_list.append((node, down, length))
+    # m = 5
+    # length = 10
+    # edge_list = []
+    # for row in range(m):
+    #     for col in range(m):
+    #         node = row * m + col
+    #         # Right neighbor
+    #         if col < m - 1:
+    #             right = node + 1
+    #             edge_list.append((node, right, length))
+    #         # Bottom neighbor
+    #         if row < m - 1:
+    #             down = node + m
+    #             edge_list.append((node, down, length))
 
-    NUM_TRIALS = 200
+    LENGTH_NETWORK = 5
+    WIDTH_NETWORK = 5
+    EDGE_LENGTH_KM = 1
     RANDOM_SEED = 1
-    NUM_USERS = 3
+    NUM_TRIALS = 1
+    P_OP = 0.9
+    MAX_PER_EDGE = 1
+    NUM_USERS = 5
+    DECOHERENCE_TIME = 1
+    MAX_TIMEESLOT_PER_TRIAL = 100
+
     SOURCE_METHOD = "all_edges"
     # COST_BUDGET = 20
     COST_BUDGET = None
 
-    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=0.9, max_per_edge=2, decoherence_time=3, max_timeslot=200)
+    # simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
+    #                            decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)
+
+    simulator = EventSimulator(length_network=LENGTH_NETWORK, width_network=WIDTH_NETWORK, edge_length_km=EDGE_LENGTH_KM,
+                               num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
+                               decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()
@@ -216,7 +235,9 @@ if __name__ == "__main__":
 
     print(f"Generating {NUM_TRIALS} user sets for the experiment...")
     random.seed(RANDOM_SEED)
-    user_sets_list = [simulator.user_gen.random_users(k=NUM_USERS) for _ in range(NUM_TRIALS)]
+    # user_sets_list = [simulator.user_gen.random_users(k=NUM_USERS) for _ in range(NUM_TRIALS)]
+    user_sets_list = [[(2, 2), (0, 0), (0, 4), (4, 0), (4, 4)]]
+
     print("\nGenerated User Sets List for all trials:")
     print(user_sets_list)
 
@@ -225,25 +246,29 @@ if __name__ == "__main__":
     print("\n" + "#" * 60)
     print("###   STARTING SINGLE-PATH (SP) ROUTING SIMULATION   ###")
     print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_sp, cost_budget=COST_BUDGET)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+                         dr_object=dr_sp, cost_budget=COST_BUDGET)
 
-    # Run Multi-Path Greedy trials
-    print("\n" + "#" * 60)
-    print("###   STARTING MULTI-PATH GREEDY (MPG) ROUTING SIMULATION   ###")
-    print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpg, cost_budget=COST_BUDGET)
+    # # Run Multi-Path Greedy trials
+    # print("\n" + "#" * 60)
+    # print("###   STARTING MULTI-PATH GREEDY (MPG) ROUTING SIMULATION   ###")
+    # print("#" * 60)
+    # simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+    #                      dr_object=dr_mpg, cost_budget=COST_BUDGET)
 
-    # Run Multi-Path Cooperative trials
-    print("\n" + "#" * 60)
-    print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
-    print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpc, cost_budget=COST_BUDGET)
-
-    # Run Multi-Path Packing trials
-    print("\n" + "#" * 60)
-    print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
-    print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', source_method=SOURCE_METHOD, seed=RANDOM_SEED, dr_object=dr_mpp, cost_budget=COST_BUDGET)
+    # # Run Multi-Path Cooperative trials
+    # print("\n" + "#" * 60)
+    # print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
+    # print("#" * 60)
+    # simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+    #                      dr_object=dr_mpc, cost_budget=COST_BUDGET)
+    #
+    # # Run Multi-Path Packing trials
+    # print("\n" + "#" * 60)
+    # print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
+    # print("#" * 60)
+    # simulator.run_trials(user_sets=user_sets_list, routing_method='MPP', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+    #                      dr_object=dr_mpp, cost_budget=COST_BUDGET)
 
     # --- Final Summary ---
     print("\n\n" + "*" * 50)
@@ -253,11 +278,11 @@ if __name__ == "__main__":
     print("\n--- DR Summary for SinglePath (SP) Routing ---")
     dr_sp.summary()
 
-    print("\n--- DR Summary for MultiPath Greedy (MPG) Routing ---")
-    dr_mpg.summary()
+    # print("\n--- DR Summary for MultiPath Greedy (MPG) Routing ---")
+    # dr_mpg.summary()
 
-    print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
-    dr_mpc.summary()
-
-    print("\n--- DR Summary for MultiPath Packing (MPP) Routing ---")
-    dr_mpp.summary()
+    # print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
+    # dr_mpc.summary()
+    #
+    # print("\n--- DR Summary for MultiPath Packing (MPP) Routing ---")
+    # dr_mpp.summary()
