@@ -8,6 +8,8 @@ from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from entanglement_distribution import EntanglementDistribution
 from quantum_source_placement import SourcePlacement
+from entanglement_link import EntanglementLink
+from collections import Counter
 
 
 class EventSimulator:
@@ -29,26 +31,54 @@ class EventSimulator:
         self.fusion = EntanglementFusion(self.network)
         # self.DR = EntanglementDistribution()
 
-    def select_center_node(self, subgraph, user_set):
-        # It is possible that candidate_centers doesn't exist
-        # dr_v is 0 (no entanglement link in the path)
-        candidate_centers = []
-        for v in self.network.nodes.values():
-            if len(v.channels) >= len(user_set):
-                candidate_centers.append(v.node_id)
+    def select_center_node(self, user_set, edge_probs, deployed_sources):
         best_v = None
-        best_dr = 0
+        best_dr = 0.0
 
-        for v in candidate_centers:
-            paths = self.get_shortest_paths_SP(v, user_set)
+        for v in self.topo.graph.nodes():
+            if self.topo.graph.degree[v] < len(user_set):
+                continue
 
-            dr_v = self.compute_dr_sp(paths, subgraph)
-            if dr_v > best_dr:
-                best_dr = dr_v
+            # 构造容量网络
+            G_cap = nx.DiGraph()
+            for (u, w) in self.topo.graph.edges():
+                edge_key = tuple(sorted((u, w)))
+                cap = deployed_sources.get(edge_key, 0)
+                if cap > 0:
+                    G_cap.add_edge(u, w, capacity=cap)
+                    G_cap.add_edge(w, u, capacity=cap)
+
+            T = "super_sink"
+            for u in user_set:
+                if u == v:
+                    continue
+                G_cap.add_edge(u, T, capacity=1)
+
+            flow_value, flow_dict = nx.maximum_flow(G_cap, v, T)
+            if flow_value < len(user_set):
+                continue
+
+            dr = 1.0
+            for u in user_set:
+                if u == v:
+                    continue
+                try:
+                    path = nx.shortest_path(self.topo.graph, source=v, target=u)
+                    for i in range(len(path) - 1):
+                        e = tuple(sorted((path[i], path[i + 1])))
+                        if e not in edge_probs:
+                            dr = 0.0
+                            break
+                        dr *= edge_probs[e]
+                except nx.NetworkXNoPath:
+                    dr = 0.0
+                    break
+
+            if dr > best_dr:
                 best_v = v
+                best_dr = dr
 
         print(f"[Select Center] Chosen center node: {best_v}, with estimated DR_SP = {best_dr:.4f}")
-
         return best_v, best_dr
 
     def get_shortest_paths_SP(self, v, user_set):
@@ -79,7 +109,7 @@ class EventSimulator:
                     return 0.0
         return dr
 
-    def run_single_trial_SP(self, user_set, p_op):
+    def run_single_trial_SP(self, user_set, p_op, edge_probs, deployed_sources):
         """
         Run simulation until GHZ is formed for the given user set or until max timeslot.
         Returns number of time slots required or None if failed.
@@ -87,10 +117,10 @@ class EventSimulator:
         G_prime = self.link_manager.get_subgraph(current_time=1)
 
         # vc: The selected center node vc remains fixed
-        vc, best_dr = self.select_center_node(G_prime, user_set)
+        vc, best_dr = self.select_center_node(user_set, edge_probs, deployed_sources)
         if vc is None:
             print(f"\n[Routing] Final selected center: {vc}")
-            return 0, 0
+            return 0
 
         # paths: the routing solution computed for the selected central node remains fixed
         paths = self.get_shortest_paths_SP(vc, user_set)
@@ -99,24 +129,24 @@ class EventSimulator:
             print(f"  {vc} -> {s}: {path}")
 
         SProuting = SPEntanglementRouting(self.network, user_set, p_op)
-        time_to_success, cost = SProuting.sp_routing(vc, paths, self.max_timeslot)
-        return time_to_success, cost
+        time_to_success = SProuting.sp_routing(vc, paths, self.max_timeslot, deployed_sources)
+        return time_to_success
 
-    def run_single_trial_MPG(self, user_set, p_op):
+    def run_single_trial_MPG(self, user_set, p_op, edge_probs, deployed_sources):
         G_prime = self.link_manager.get_subgraph(current_time=1)
 
         # vc: The selected center node vc remains fixed
-        vc, best_dr = self.select_center_node(G_prime, user_set)
+        vc, best_dr = self.select_center_node(user_set, edge_probs, deployed_sources)
         if vc is None:
             print(f"\n[Routing] Final selected center: {vc}")
-            return 0, 0
+            return 0
 
         # paths: the routing solution computed for the selected central node changes with subgraph
         MPGrouting = MPGreedyRouting(self.network, user_set, p_op)
-        time_to_success, cost = MPGrouting.mp_greedy_routing(vc, self.max_timeslot)
-        return time_to_success, cost
+        time_to_success = MPGrouting.mp_greedy_routing(vc, self.max_timeslot, deployed_sources)
+        return time_to_success
 
-    def run_single_trial_MPC(self, user_set, p_op):
+    def run_single_trial_MPC(self, user_set, p_op, deployed_sources):
         """
         Run simulation until GHZ is formed for the given user set or until max timeslot
         using the MP-C protocol.
@@ -124,18 +154,18 @@ class EventSimulator:
         # Unlike SP/MPG, MPC does not require a pre-selected center node.
         # Source placement is still based on the Steiner tree heuristic.
         MPCrouting = MPCooperativeRouting(self.network, user_set, p_op)
-        time_to_success, cost = MPCrouting.mpc_routing(self.max_timeslot)
-        return time_to_success, cost
+        time_to_success = MPCrouting.mpc_routing(self.max_timeslot, deployed_sources)
+        return time_to_success
 
-    def run_single_trial_MPP(self, user_set, p_op):
+    def run_single_trial_MPP(self, user_set, p_op, deployed_sources):
         """
         Run simulation until GHZ is formed for the given user set or until max timeslot
         using the MP-P protocol.
         """
         # MPP also does not require a pre-selected center node.
         MPProuting = MPPackingRouting(self.network, user_set, p_op)
-        time_to_success, cost, num_ghz = MPProuting.mpp_routing(self.max_timeslot)
-        return time_to_success, cost, num_ghz
+        time_to_success, num_ghz = MPProuting.mpp_routing(self.max_timeslot, deployed_sources)
+        return time_to_success, num_ghz
 
     def run_trials(self, seed, user_sets, routing_method, source_method, dr_object, cost_budget):
         if seed is not None:
@@ -152,21 +182,37 @@ class EventSimulator:
             source = SourcePlacement(self.topo)
             sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,
                                                        max_per_edge=self.max_per_edge)
+            source_edge_list = [tuple(sorted(edge)) for edge in sources]
+            deployed_dict = dict(Counter(source_edge_list))
+            cost = source.compute_cost()
+
+            edge_probs = {}   # used for choosing the center node
+            for (u, v) in sources:
+                length_km = self.topo.graph[u][v].get("length", 1)
+                temp_link = EntanglementLink(
+                    link_id=f"{u}-{v}",
+                    nodes=[u, v],
+                    gen_time=0,
+                    length_km=length_km,
+                    p_op=self.p_op,
+                    loss_coef_dB_per_km=0.2
+                )
+                edge_probs[(u, v)] = temp_link.p_e
+
             for u, v in sources:
                 self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=0)
-
             self.network.show_network_status(current_time=0)
 
             num_ghz = 1  # Default for SP, MPG, MPC
 
             if routing_method == 'SP':
-                time_to_success, cost = self.run_single_trial_SP(user_set, self.p_op)
+                time_to_success = self.run_single_trial_SP(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPG':
-                time_to_success, cost = self.run_single_trial_MPG(user_set, self.p_op)
+                time_to_success = self.run_single_trial_MPG(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPC':
-                time_to_success, cost = self.run_single_trial_MPC(user_set, self.p_op)
+                time_to_success = self.run_single_trial_MPC(user_set, self.p_op, deployed_dict)
             elif routing_method == 'MPP':
-                time_to_success, cost, num_ghz = self.run_single_trial_MPP(user_set, self.p_op)
+                time_to_success, num_ghz = self.run_single_trial_MPP(user_set, self.p_op, deployed_dict)
             else:
                 raise ValueError(f"Unknown routing_method: {routing_method}")
 
@@ -210,7 +256,7 @@ if __name__ == "__main__":
     WIDTH_NETWORK = 5
     EDGE_LENGTH_KM = 1
     RANDOM_SEED = 1
-    NUM_TRIALS = 1
+    NUM_TRIALS = 2
     P_OP = 0.9
     MAX_PER_EDGE = 1
     NUM_USERS = 5
@@ -236,19 +282,19 @@ if __name__ == "__main__":
     print(f"Generating {NUM_TRIALS} user sets for the experiment...")
     random.seed(RANDOM_SEED)
     # user_sets_list = [simulator.user_gen.random_users(k=NUM_USERS) for _ in range(NUM_TRIALS)]
-    user_sets_list = [[(2, 2), (0, 0), (0, 4), (4, 0), (4, 4)]]
+    user_sets_list = [[(0, 0), (0, 4), (4, 0), (4, 4)]]
 
     print("\nGenerated User Sets List for all trials:")
     print(user_sets_list)
 
     # --- Run Simulations ---
-    # Run Single-Path trials
-    print("\n" + "#" * 60)
-    print("###   STARTING SINGLE-PATH (SP) ROUTING SIMULATION   ###")
-    print("#" * 60)
-    simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
-                         dr_object=dr_sp, cost_budget=COST_BUDGET)
-
+    # # Run Single-Path trials
+    # print("\n" + "#" * 60)
+    # print("###   STARTING SINGLE-PATH (SP) ROUTING SIMULATION   ###")
+    # print("#" * 60)
+    # simulator.run_trials(user_sets=user_sets_list, routing_method='SP', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+    #                      dr_object=dr_sp, cost_budget=COST_BUDGET)
+    #
     # # Run Multi-Path Greedy trials
     # print("\n" + "#" * 60)
     # print("###   STARTING MULTI-PATH GREEDY (MPG) ROUTING SIMULATION   ###")
@@ -256,13 +302,13 @@ if __name__ == "__main__":
     # simulator.run_trials(user_sets=user_sets_list, routing_method='MPG', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
     #                      dr_object=dr_mpg, cost_budget=COST_BUDGET)
 
-    # # Run Multi-Path Cooperative trials
-    # print("\n" + "#" * 60)
-    # print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
-    # print("#" * 60)
-    # simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
-    #                      dr_object=dr_mpc, cost_budget=COST_BUDGET)
-    #
+    # Run Multi-Path Cooperative trials
+    print("\n" + "#" * 60)
+    print("###   STARTING MULTI-PATH COOPERATIVE (MPC) ROUTING SIMULATION   ###")
+    print("#" * 60)
+    simulator.run_trials(user_sets=user_sets_list, routing_method='MPC', source_method=SOURCE_METHOD, seed=RANDOM_SEED,
+                         dr_object=dr_mpc, cost_budget=COST_BUDGET)
+
     # # Run Multi-Path Packing trials
     # print("\n" + "#" * 60)
     # print("###   STARTING MULTI-PATH PACKING (MPP) ROUTING SIMULATION   ###")
@@ -274,15 +320,15 @@ if __name__ == "__main__":
     print("\n\n" + "*" * 50)
     print("********** FINAL SIMULATION SUMMARY   **********")
     print("*" * 50)
-
-    print("\n--- DR Summary for SinglePath (SP) Routing ---")
-    dr_sp.summary()
-
+    #
+    # print("\n--- DR Summary for SinglePath (SP) Routing ---")
+    # dr_sp.summary()
+    #
     # print("\n--- DR Summary for MultiPath Greedy (MPG) Routing ---")
     # dr_mpg.summary()
 
-    # print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
-    # dr_mpc.summary()
+    print("\n--- DR Summary for MultiPath Cooperative (MPC) Routing ---")
+    dr_mpc.summary()
     #
     # print("\n--- DR Summary for MultiPath Packing (MPP) Routing ---")
     # dr_mpp.summary()

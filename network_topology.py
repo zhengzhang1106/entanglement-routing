@@ -49,14 +49,15 @@ class Topology:
         pos = {(x, y): (y, -x) for x, y in self.graph.nodes()}
         labels = {node: str(node) for node in self.graph.nodes()}
 
-        plt.figure(figsize=(6, 6))
-        nx.draw(self.graph, pos, with_labels=True, labels=labels,
+        fig, ax = plt.subplots(figsize=(6, 6))
+        nx.draw(self.graph, pos, ax=ax, with_labels=True, labels=labels,
                 node_size=500, node_color="skyblue", font_size=8, font_color="black")
 
         edge_labels = {(u, v): d['length'] for u, v, d in self.graph.edges(data=True)}
         nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=edge_labels, font_size=7)
 
-        plt.title("Grid Topology Visualization")
+        ax.set_title("Grid Topology Visualization")
+        plt.tight_layout()
         plt.show()
 
 

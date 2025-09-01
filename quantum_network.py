@@ -8,7 +8,7 @@ class QuantumNetwork:
     def __init__(self, length_network, width_network, edge_length_km, max_per_edge=1, decoherence_time=10):
         # self.topo = Topology(edge_list)
         self.topo = Topology(length_network, width_network, edge_length_km)
-        self.topo.draw_topology()
+        # self.topo.draw_topology()
         self.nodes = {}
         self.entanglementlink_manager = EntanglementLinkManager(decoherence_time)
         self.max_per_edge = max_per_edge
@@ -53,6 +53,7 @@ class QuantumNetwork:
         for node in self.nodes.values():
             node.memory.memory_storage = {}
         self.entanglementlink_manager.links = []
+        self.entanglementlink_manager.slot_counter = {}
 
 
 if __name__ == "__main__":

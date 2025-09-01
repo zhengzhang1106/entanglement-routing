@@ -4,6 +4,7 @@ from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from quantum_source_placement import SourcePlacement
 from steiner_tree_algorithms import approximate_steiner_tree, has_connecting_tree
+from collections import Counter
 
 
 class MPGreedyRouting:
@@ -16,13 +17,21 @@ class MPGreedyRouting:
         self.swapping = EntanglementSwapping(self.network)
         self.fusion = EntanglementFusion(self.network)
 
-    def simulate_entanglement_links(self, deployed_sources, time_slot):
-        # The key change here: no longer check for existing links before attempting.
-        # Each entry in deployed_sources represents a separate source on a given edge.
-        for u, v in deployed_sources:
-            # if self._has_entanglement_link(u, v):
-            #     continue
-            self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
+    def simulate_entanglement_links(self, deployed_dict, time_slot):
+        for edge, k in deployed_dict.items():
+            edge_key = tuple(sorted(edge))
+
+            current_count = sum(
+                1 for link in self.link_manager.links
+                if tuple(sorted(link.nodes)) == edge_key
+            )
+            remaining = k - current_count
+            if remaining <= 0:
+                continue
+
+            u, v = edge_key
+            for _ in range(remaining):
+                self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_shared_bell_pair(self, user, vc):
         mem = self.network.nodes[user].memory.memory_storage
@@ -45,12 +54,9 @@ class MPGreedyRouting:
                 paths[s] = []
         return paths
 
-    def mp_greedy_routing(self, vc, max_timeslot):
+    def mp_greedy_routing(self, vc, max_timeslot, deployed_sources):
         time_slot = 0
         hasGHZ = False
-        source = SourcePlacement(self.network.topo)
-        deployed_sources = source.place_sources_for_request(self.user_set)
-        cost = source.compute_cost()
 
         while not hasGHZ:
             time_slot = time_slot + 1
@@ -84,7 +90,7 @@ class MPGreedyRouting:
                     print(f"[Fusion] GHZ generated at vc={vc}")
                     hasGHZ = True
 
-        return time_slot, cost
+        return time_slot
 
 
 class MPCooperativeRouting:
@@ -97,11 +103,21 @@ class MPCooperativeRouting:
         self.swapping = EntanglementSwapping(self.network)
         self.fusion = EntanglementFusion(self.network)
 
-    def simulate_entanglement_links(self, deployed_sources, time_slot):
-        for u, v in deployed_sources:
-            # if self._has_entanglement_link(u, v):
-            #     continue
-            self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
+    def simulate_entanglement_links(self, deployed_dict, time_slot):
+        for edge, k in deployed_dict.items():
+            edge_key = tuple(sorted(edge))
+
+            current_count = sum(
+                1 for link in self.link_manager.links
+                if tuple(sorted(link.nodes)) == edge_key
+            )
+            remaining = k - current_count
+            if remaining <= 0:
+                continue
+
+            u, v = edge_key
+            for _ in range(remaining):
+                self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):
         for link in self.link_manager.links:
@@ -109,12 +125,9 @@ class MPCooperativeRouting:
                 return True
         return False
 
-    def mpc_routing(self, max_timeslot):
+    def mpc_routing(self, max_timeslot, deployed_sources):
         time_slot = 0
         hasGHZ = False
-        source = SourcePlacement(self.network.topo)
-        deployed_sources = source.place_sources_for_request(self.user_set)
-        cost = source.compute_cost()
 
         while not hasGHZ:
             time_slot += 1
@@ -130,6 +143,7 @@ class MPCooperativeRouting:
 
             if has_connecting_tree(G_prime, self.user_set):
                 R = approximate_steiner_tree(G_prime, self.user_set)
+                print(f"Steiner tree is {R}")
                 used_links = set(R.edges())
 
                 success = self.fusion.fuse_users_from_tree(user_list=self.user_set, tree_links=used_links, current_time=time_slot, p_op=self.p_op)
@@ -137,7 +151,7 @@ class MPCooperativeRouting:
                     print(f"[Fusion] GHZ generated via a Steiner tree.")
                     hasGHZ = True
 
-        return time_slot, cost
+        return time_slot
 
 
 class MPPackingRouting:
@@ -150,11 +164,21 @@ class MPPackingRouting:
         self.swapping = EntanglementSwapping(self.network)
         self.fusion = EntanglementFusion(self.network)
 
-    def simulate_entanglement_links(self, deployed_sources, time_slot):
-        for u, v in deployed_sources:
-            # if self._has_entanglement_link(u, v):
-            #     continue
-            self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
+    def simulate_entanglement_links(self, deployed_dict, time_slot):
+        for edge, k in deployed_dict.items():
+            edge_key = tuple(sorted(edge))
+
+            current_count = sum(
+                1 for link in self.link_manager.links
+                if tuple(sorted(link.nodes)) == edge_key
+            )
+            remaining = k - current_count
+            if remaining <= 0:
+                continue
+
+            u, v = edge_key
+            for _ in range(remaining):
+                self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):
         for link in self.link_manager.links:
@@ -162,12 +186,9 @@ class MPPackingRouting:
                 return True
         return False
 
-    def mpp_routing(self, max_timeslot):
+    def mpp_routing(self, max_timeslot, deployed_sources):
         time_slot = 0
         hasGHZ = False
-        source = SourcePlacement(self.network.topo)
-        deployed_sources = source.place_sources_for_request(self.user_set)
-        cost = source.compute_cost()
         num_ghz_in_slot = 0
 
         while not hasGHZ:
@@ -199,7 +220,7 @@ class MPPackingRouting:
             if num_ghz_in_slot > 0:
                 hasGHZ = True
 
-        return time_slot, cost, num_ghz_in_slot
+        return time_slot, num_ghz_in_slot
 
 
 if __name__ == "__main__":

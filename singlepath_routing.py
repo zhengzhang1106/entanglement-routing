@@ -18,6 +18,7 @@ from quantum_network import QuantumNetwork
 from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from quantum_source_placement import SourcePlacement
+from collections import Counter
 
 
 class SPEntanglementRouting:
@@ -30,11 +31,21 @@ class SPEntanglementRouting:
         self.swapping = EntanglementSwapping(self.network)
         self.fusion = EntanglementFusion(self.network)
 
-    def simulate_entanglement_links(self, deployed_sources, time_slot):
-        for u, v in deployed_sources:
-            # if self._has_entanglement_link(u, v):
-            #     continue
-            self.network.attempt_entanglement(u, v, p_op=0.9, gen_time=time_slot)
+    def simulate_entanglement_links(self, deployed_dict, time_slot):
+        for edge, k in deployed_dict.items():
+            edge_key = tuple(sorted(edge))
+
+            current_count = sum(
+                1 for link in self.link_manager.links
+                if tuple(sorted(link.nodes)) == edge_key
+            )
+            remaining = k - current_count
+            if remaining <= 0:
+                continue
+
+            u, v = edge_key
+            for _ in range(remaining):
+                self.network.attempt_entanglement(u, v, p_op=self.p_op, gen_time=time_slot)
 
     def _has_entanglement_link(self, u, v):
         for link in self.link_manager.links:
@@ -47,12 +58,9 @@ class SPEntanglementRouting:
         # Check if the memory for user has any links to vc
         return vc in mem and len(mem[vc]) > 0
 
-    def sp_routing(self, vc, paths, max_timeslot):
+    def sp_routing(self, vc, paths, max_timeslot, deployed_sources):
         time_slot = 0
         hasGHZ = False
-        source = SourcePlacement(self.network.topo)
-        deployed_sources = source.place_sources_for_request(self.user_set)
-        cost = source.compute_cost()
 
         while not hasGHZ:
             time_slot = time_slot + 1
@@ -66,6 +74,7 @@ class SPEntanglementRouting:
             self.network.purge_all_expired(time_slot)
             self.simulate_entanglement_links(deployed_sources, time_slot)
             # self.network.show_network_status(current_time=time_slot)
+            # self.link_manager.show_active_links(time_slot)
 
             # Step 2: For users who do not yet share a Bell pair with center, do swapping
             S_prime = [u for u in self.user_set if u != vc and not self.has_shared_bell_pair(u, vc)]
@@ -82,7 +91,7 @@ class SPEntanglementRouting:
                     print(f"[Fusion] GHZ generated at vc={vc}")
                     hasGHZ = True
 
-        return time_slot, cost
+        return time_slot
 
 
 if __name__ == "__main__":
