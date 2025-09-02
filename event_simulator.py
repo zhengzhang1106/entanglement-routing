@@ -39,7 +39,6 @@ class EventSimulator:
             if self.topo.graph.degree[v] < len(user_set):
                 continue
 
-            # 构造容量网络
             G_cap = nx.DiGraph()
             for (u, w) in self.topo.graph.edges():
                 edge_key = tuple(sorted((u, w)))
@@ -48,14 +47,22 @@ class EventSimulator:
                     G_cap.add_edge(u, w, capacity=cap)
                     G_cap.add_edge(w, u, capacity=cap)
 
+            if v not in G_cap.nodes:
+                continue
+
             T = "super_sink"
             for u in user_set:
                 if u == v:
                     continue
                 G_cap.add_edge(u, T, capacity=1)
 
-            flow_value, flow_dict = nx.maximum_flow(G_cap, v, T)
-            if flow_value < len(user_set):
+            try:
+                flow_value, flow_dict = nx.maximum_flow(G_cap, v, T)
+            except nx.NetworkXError:
+                continue
+
+            required_flow = len(user_set) - 1 if v in user_set else len(user_set)
+            if flow_value < required_flow:
                 continue
 
             dr = 1.0
@@ -256,16 +263,17 @@ if __name__ == "__main__":
     WIDTH_NETWORK = 3
     EDGE_LENGTH_KM = 1
     RANDOM_SEED = 1
-    NUM_TRIALS = 50
+    NUM_TRIALS = 100
     P_OP = 0.9
-    MAX_PER_EDGE = 1
     NUM_USERS = 3
     DECOHERENCE_TIME = 1
-    MAX_TIMEESLOT_PER_TRIAL = 200
+    MAX_TIMEESLOT_PER_TRIAL = 300
 
-    SOURCE_METHOD = "all_edges"
-    # COST_BUDGET = 20
-    COST_BUDGET = None
+    MAX_PER_EDGE = 5
+    # SOURCE_METHOD = "all_edges"
+    # COST_BUDGET = None
+    SOURCE_METHOD = "steiner_tree"
+    COST_BUDGET = 18
 
     # simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
     #                            decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)

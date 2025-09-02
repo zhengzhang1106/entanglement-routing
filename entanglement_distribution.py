@@ -28,8 +28,9 @@ class EntanglementDistribution:
     def average_dr(self):
         if not self.successful_trials:
             return 0.0
-        return sum([num_ghz / t for t, num_ghz in self.successful_trials]) / \
-               (len(self.successful_trials) + self.failed_trials_num)
+        # return sum([num_ghz / t for t, num_ghz in self.successful_trials]) / \
+        #        (len(self.successful_trials) + self.failed_trials_num)
+        return sum([num_ghz / t for t, num_ghz in self.successful_trials]) / len(self.successful_trials)
 
     def average_cost(self):
         if not self.cost_list:
@@ -51,21 +52,21 @@ class EntanglementDistribution:
         print(f"  List of successful time slot : {[t for t, _ in self.successful_trials]}")
         print(f"  List of successful ghz count : {[n for _, n in self.successful_trials]}")
         print(f"  List of successful cost :      {self.cost_list}")
+        print(f"  cost : {self.average_cost():.6f}")
         print(f"  Total Runs")
         print(f"  Successful Runs : {len(self.successful_trials)}")
         print(f"  Failed Runs     : {self.failed_trials_num}")
         print(f"  Failure Rate    : {self.failure_rate():.2%}")
 
-        print(f"  DR : {self.average_dr():.6f}")
-        print(f"  cost : {self.average_cost():.6f}")
-        print(f"  cost_effiency : {self.cost_effiency():.6f}")
-
         if self.is_valid_result():
             print(f"  DR : {self.average_dr():.6f}")
-            print(f"  cost : {self.average_cost():.6f}")
+            print(f"  cost_effiency : {self.cost_effiency():.6f}")
+
 
         else:
             print("  [!] Too many failures. Discard this datapoint.")
+            print(f"  DR : {self.average_dr():.6f}")
+            print(f"  cost_effiency : {self.cost_effiency():.6f}")
 
 
 if __name__ == "__main__":

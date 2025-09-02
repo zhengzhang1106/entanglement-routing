@@ -9,54 +9,78 @@ class SourcePlacement:
 
     def place_sources_for_request(self, user_set, method="steiner_tree", cost_budget=None, max_per_edge=1):
         """
-        Input: user_set - list of nodes (user terminals)
-        Output: sources - list of edges [(u, v), ...] to deploy quantum sources
-        Strategy:
-            - method='steiner_tree': Construct Steiner Tree (approx) connecting users.
-            - method='all_edges': Place source on all edges in the network.
-            - total_cost (optional): Total budget for sources.
-            - max_per_edge (optional): Maximum number of source pairs per edge.
+        Place quantum sources on edges according to the selected method.
+
+        Args:
+            user_set (list): User terminal nodes.
+            method (str): 'steiner_tree' or 'all_edges'.
+            cost_budget (int, optional): Total cost budget (must be even). Each source pair costs 2.
+            max_per_edge (int): Maximum number of source pairs per edge.
+
+        Returns:
+            list: List of edges [(u, v), ...] where sources are deployed.
+                  Each tuple represents one source pair.
         """
+        # 1) Select base edges
         if method == "steiner_tree":
             subgraph = approximate_steiner_tree(self.topo.graph, user_set)
-            base_edges = list(set(subgraph.edges()))
+            base_edges = list(subgraph.edges())
         elif method == "all_edges":
-            base_edges = list(set(self.topo.get_edges()))
+            base_edges = list(self.topo.get_edges())
         else:
             raise ValueError(f"Unknown source placement method: {method}")
 
+        # Normalize edges as sorted tuples (undirected)
+        base_keys = sorted({tuple(sorted(e[:2])) for e in base_edges})
+        if not base_keys:
+            self.sources = []
+            print("[SourcePlacement] No candidate edges found.")
+            return self.sources
+
         self.sources = []
-        source_count = {}
+        per_edge_count = {k: 0 for k in base_keys}
 
+        # 2) If no budget: assign one pair per edge (within max_per_edge)
         if cost_budget is None:
-            # If no total_cost is provided, use the simple method (one source per edge)
-            self.sources = base_edges
-        else:
-            # Place one source on each base edge first, within the budget
-            for u, v in base_edges:
-                if len(self.sources) * 2 + 2 > cost_budget:
-                    break
+            for (u, v) in base_keys:
+                if per_edge_count[(u, v)] < max_per_edge:
+                    self.sources.append((u, v))
+                    per_edge_count[(u, v)] += 1
+            print(f"[SourcePlacement] Method: {method}, Sources placed: {self.sources}")
+            print(f"[SourcePlacement] Total cost: {self.compute_cost()}")
+            print("[SourcePlacement] Cost budget: None")
+            return self.sources
+
+        # 3) With budget
+        if cost_budget < 0:
+            raise ValueError("cost_budget must be non-negative")
+        if cost_budget % 2 != 0:
+            print(f"[SourcePlacement][WARN] cost_budget={cost_budget} is not even, "
+                  f"using {cost_budget - 1} instead.")
+        budget_pairs = cost_budget // 2
+
+        capacity_pairs = len(base_keys) * max_per_edge
+        target_pairs = min(budget_pairs, capacity_pairs)
+
+        # 4) Round-robin allocation across edges
+        placed = 0
+        idx = 0
+        n = len(base_keys)
+        while placed < target_pairs:
+            u, v = base_keys[idx % n]
+            if per_edge_count[(u, v)] < max_per_edge:
                 self.sources.append((u, v))
-                edge_key = tuple(sorted((u, v)))
-                source_count[edge_key] = 1
+                per_edge_count[(u, v)] += 1
+                placed += 1
+            idx += 1
+            if idx >= n and all(per_edge_count[k] >= max_per_edge for k in base_keys):
+                break  # capacity exhausted
 
-            # Add more sources to existing edges until budget or max_per_edge is reached
-            while len(self.sources) * 2 < cost_budget:
-                added_source = False
-                for u, v in base_edges:
-                    if len(self.sources) * 2 + 2 > cost_budget:
-                        break
-                    edge_key = tuple(sorted((u, v)))
-                    if source_count.get(edge_key, 0) < max_per_edge:
-                        self.sources.append((u, v))
-                        source_count[edge_key] = source_count.get(edge_key, 0) + 1
-                        added_source = True
-                if not added_source:
-                    break
-
-        print(f"[SourcePlacement] Method: {method}, Sources placed on edges: {self.sources}")
-        print(f"[SourcePlacement] Total cost: {self.compute_cost()}")
-        print(f"[SourcePlacement] Cost budget:{cost_budget}")
+        # 5) Print and return
+        print(f"[SourcePlacement] Method: {method}, Sources placed: {self.sources}")
+        print(f"[SourcePlacement] Total cost: {self.compute_cost()} (target={2 * target_pairs})")
+        print(f"[SourcePlacement] Cost budget: {cost_budget}, max_per_edge={max_per_edge}, "
+              f"capacity_pairs={capacity_pairs}, used_pairs={placed}")
         return self.sources
 
     def compute_cost(self):
