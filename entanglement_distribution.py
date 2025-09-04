@@ -66,6 +66,22 @@ class EntanglementDistribution:
     def is_valid_result(self):
         return self.failure_rate() <= 0.05
 
+    def get_summary_dict(self):
+        """Returns a dictionary containing the summary statistics."""
+        return {
+            "successful_runs": len(self.successful_trials),
+            "failed_runs": self.failed_trials_num,
+            "failure_rate": self.failure_rate(),
+            "average_dr": self.average_dr(),
+            "average_cost": self.average_cost(),
+            "cost_efficiency_actual": self.cost_efficiency_actual(),
+            "cost_efficiency_budget": self.cost_efficiency_budget(),
+            "is_valid_result": self.is_valid_result(),
+            "successful_times": [t for t, _ in self.successful_trials],
+            "successful_ghz_counts": [n for _, n in self.successful_trials],
+            "successful_costs": self.cost_list
+        }
+
     def summary(self):
         print(f"  List of successful time slot : {[t for t, _ in self.successful_trials]}")
         print(f"  List of successful ghz count : {[n for _, n in self.successful_trials]}")
@@ -96,3 +112,5 @@ if __name__ == "__main__":
         distribution.record_trial(t, cost=5, cost_budget=10, num_ghz=1)
 
     distribution.summary()
+    print("\nSummary Dictionary:")
+    print(distribution.get_summary_dict())
