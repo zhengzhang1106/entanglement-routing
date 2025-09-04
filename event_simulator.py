@@ -228,7 +228,7 @@ class EventSimulator:
             else:
                 print(f"[Trial {trial_num}] ❌ Failed to generate GHZ for {routing_method} within time limit.")
 
-            dr_object.record_trial(time_to_success, cost, num_ghz)
+            dr_object.record_trial(time_to_success, cost, cost_budget, num_ghz)
 
             # self.DR.record_trial(time_to_success, cost)
 
@@ -262,14 +262,14 @@ if __name__ == "__main__":
     LENGTH_NETWORK = 3
     WIDTH_NETWORK = 3
     EDGE_LENGTH_KM = 1
+
     RANDOM_SEED = 1
     NUM_TRIALS = 100
     P_OP = 0.9
     NUM_USERS = 3
     DECOHERENCE_TIME = 1
     MAX_TIMEESLOT_PER_TRIAL = 300
-
-    MAX_PER_EDGE = 5
+    MAX_PER_EDGE = 3
     # SOURCE_METHOD = "all_edges"
     # COST_BUDGET = None
     SOURCE_METHOD = "steiner_tree"
