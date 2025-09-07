@@ -178,6 +178,8 @@ class EventSimulator:
         if seed is not None:
             random.seed(seed)
 
+        all_deployed_dicts = []
+
         for i, user_set in enumerate(user_sets):
             trial_num = i + 1
             print("\n" + "=" * 100)
@@ -192,6 +194,8 @@ class EventSimulator:
             source_edge_list = [tuple(sorted(edge)) for edge in sources]
             deployed_dict = dict(Counter(source_edge_list))
             cost = source.compute_cost()
+
+            all_deployed_dicts.append(deployed_dict)
 
             edge_probs = {}   # used for choosing the center node
             for (u, v) in sources:
@@ -230,9 +234,7 @@ class EventSimulator:
 
             dr_object.record_trial(time_to_success, cost, cost_budget, num_ghz)
 
-            # self.DR.record_trial(time_to_success, cost)
-
-        # self.DR.summary()
+        return all_deployed_dicts
 
 
 if __name__ == "__main__":

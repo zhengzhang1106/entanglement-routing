@@ -9,9 +9,9 @@ import numpy as np
 
 # --- Simulation Parameters ---
 RANDOM_SEED = 1
-NUM_TRIALS = 300
-MAX_TIMEESLOT_PER_TRIAL = 500
-DECOHERENCE_TIME = 1
+NUM_TRIALS = 100
+MAX_TIMEESLOT_PER_TRIAL = 100
+DECOHERENCE_TIME = 2
 MAX_PER_EDGE = 3
 EDGE_LENGTH_KM = 1
 
@@ -36,7 +36,7 @@ def run_and_get_metrics(params, user_sets_list):
 
     random.seed(RANDOM_SEED)
 
-    simulator.run_trials(
+    deployed_dicts_per_trial = simulator.run_trials(
         user_sets=user_sets_list,
         routing_method=params['routing_method'],
         source_method=params['source_method'],
@@ -45,7 +45,10 @@ def run_and_get_metrics(params, user_sets_list):
         cost_budget=params['cost_budget']
     )
 
-    return dr_object.get_summary_dict()
+    summary = dr_object.get_summary_dict()
+    summary['deployed_dicts'] = str(deployed_dicts_per_trial)
+
+    return summary
 
 
 def create_combo_plot(title, x_label='Source Budget'):
@@ -66,6 +69,68 @@ def create_combo_plot(title, x_label='Source Budget'):
     ax1.set_title(title, fontsize=16)
 
     return fig, ax1, ax2
+
+
+def create_dr_plot(title, x_label='Source Budget'):
+    """
+    Creates a single-axis bar plot for Distribution Rate (DR) only.
+    """
+    fig, ax = plt.subplots(figsize=(14, 8))
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel('Distribution Rate (DR)', fontsize=14)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
+    ax.set_title(title, fontsize=16)
+    return fig, ax
+
+
+def _plot_dr(ax, results_dict, cost_budgets, group_key_fn):
+    """
+    仅绘制 DR 的柱状图。
+    results_dict: {label: {'ce_actual': [...], 'dr': [...]}}, 仍可保留 ce_actual 以便导出 Excel，但不绘图。
+      label 例如: 'SP_steiner_tree' / 'SP_all_edges'
+    group_key_fn(label) -> 用于分组上色的 key（同色条件）
+    """
+    base_x = np.array(list(cost_budgets), dtype=float)
+    groups = []
+    for label in results_dict.keys():
+        g = group_key_fn(label)
+        if g not in groups:
+            groups.append(g)
+    group_to_color_idx = {g: i for i, g in enumerate(groups)}
+
+    num_series = len(results_dict)
+    step = base_x[1] - base_x[0] if len(base_x) > 1 else 1.0
+    bar_width = step / (num_series + 1)
+
+    # 稳定顺序绘制：颜色按组一致；steiner=实心，all_edges=空心+斜纹
+    for i, (label, data) in enumerate(results_dict.items()):
+        try:
+            _key, method = label.split('_', 1)
+        except ValueError:
+            method = 'steiner_tree'  # 兜底
+
+        color = plt.cm.get_cmap('tab10')(group_to_color_idx[group_key_fn(label)] % 10)
+
+        if method == 'steiner_tree':
+            bar_kwargs = dict(color=color, alpha=0.8)
+        else:
+            bar_kwargs = dict(facecolor='none', edgecolor=color, hatch='//', linewidth=1.5)
+
+        x = base_x + (i - (num_series - 1) / 2) * bar_width
+        ax.bar(x, data['dr'], width=bar_width, label=label, **bar_kwargs)
+
+    ax.set_xticks(base_x)
+    ax.set_xticklabels(cost_budgets)
+
+
+def place_legend_inside(ax, loc='upper left'):
+    return ax.legend(
+        loc=loc,
+        bbox_to_anchor=(0.02, 0.98),  # 轴内偏移（左上角附近）
+        borderaxespad=0.4,
+        frameon=True,
+        framealpha=0.9
+    )
 
 
 def line_style_for(method: str) -> str:
@@ -129,9 +194,9 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     print("###   GENERATING PLOT 1: Protocols vs. Budget   ###")
     print("#" * 60)
 
-    protocols = ['SP', 'MPG', 'MPC', 'MPP']
-    source_methods = ["steiner_tree", "all_edges"]
-    cost_budgets = list(range(10, 21, 2))
+    protocols = ['SP', 'MPP']
+    source_methods = ["all_edges", "steiner_tree"]
+    cost_budgets = list(range(24, 37, 2))
 
     all_plot_data = []
     results = {f'{p}_{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
@@ -142,7 +207,7 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
                 label = f'{protocol}_{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 5, 'width_network': 5, 'num_users': 3,
+                    'length_network': 8, 'width_network': 8, 'num_users': 3,
                     'p_op': 0.8, 'routing_method': protocol,
                     'source_method': method, 'cost_budget': budget
                 }
@@ -151,26 +216,39 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
                 results[label]['ce_actual'].append(summary_data['cost_efficiency_actual'])
                 results[label]['dr'].append(summary_data['average_dr'])
 
-                plot_point_data = {'Protocol': protocol, 'Source Method': method, 'Budget': budget}
+                plot_point_data = {
+                    'Protocol': protocol,
+                    'Source Method': method,
+                    'Budget': budget,
+                    'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+
+                }
                 plot_point_data.update(summary_data)
-                plot_point_data['user_sets'] = str(user_sets_list)
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Protocols_vs_Budget', index=False)
 
-    fig, ax1, ax2 = create_combo_plot('Protocols vs. Source Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('Protocols vs. Source Budget: CE and DR')
+    # _plot_combo(
+    #     ax1, ax2, results, cost_budgets,
+    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]
+    # )
+    # handles1, labels1 = ax1.get_legend_handles_labels()
+    # handles2, labels2 = ax2.get_legend_handles_labels()
+    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    # 同色条件：按“协议”分组（SP/MPG/MPC/MPP）
-    _plot_combo(
-        ax1, ax2, results, cost_budgets,
+    fig, ax = create_dr_plot('Protocols vs. Source Budget: DR')
+    _plot_dr(
+        ax, results, cost_budgets,
         group_key_fn=lambda lbl: lbl.split('_', 1)[0]
     )
+    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
+    # fig.tight_layout(rect=[0, 0, 0.85, 1])
 
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-    fig.tight_layout(rect=[0, 0, 0.85, 1])
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '1_protocols_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 1 saved and data exported to Excel.")
@@ -183,8 +261,8 @@ def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
     print("#" * 60)
 
     p_ops = [0.6, 0.7, 0.8, 0.9]
-    source_methods = ["steiner_tree", "all_edges"]
-    cost_budgets = list(range(10, 21, 2))
+    source_methods = ["all_edges", "steiner_tree"]
+    cost_budgets = list(range(24, 49, 4))
 
     all_plot_data = []
     results = {f'p{p_op}_{sm}': {'ce_actual': [], 'dr': []} for p_op in p_ops for sm in source_methods}
@@ -195,7 +273,7 @@ def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
                 label = f'p{p_op}_{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 5, 'width_network': 5, 'num_users': 3,
+                    'length_network': 3, 'width_network': 3, 'num_users': 3,
                     'p_op': p_op, 'routing_method': 'MPP',
                     'source_method': method, 'cost_budget': budget
                 }
@@ -204,27 +282,40 @@ def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
                 results[label]['ce_actual'].append(summary_data['cost_efficiency_actual'])
                 results[label]['dr'].append(summary_data['average_dr'])
 
-                plot_point_data = {'P_op': p_op, 'Source Method': method, 'Budget': budget}
+                plot_point_data = {
+                    'P_op': p_op,
+                    'Source Method': method,
+                    'Budget': budget,
+                    'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
                 plot_point_data.update(summary_data)
-                plot_point_data['user_sets'] = str(user_sets_list)
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='MPP_Operation Probability', index=False)
 
-    fig, ax1, ax2 = create_combo_plot('MPP Operation Probability vs. Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('MPP Operation Probability vs. Budget: CE and DR')
+    # # 同色条件：按“p_op”分组
+    # _plot_combo(
+    #     ax1, ax2, results, cost_budgets,
+    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # p0.7 / p0.8 / p0.9
+    # )
+    #
+    # handles1, labels1 = ax1.get_legend_handles_labels()
+    # handles2, labels2 = ax2.get_legend_handles_labels()
+    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    # 同色条件：按“p_op”分组
-    _plot_combo(
-        ax1, ax2, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # p0.7 / p0.8 / p0.9
+    fig, ax = create_dr_plot('MPP Operation Probability vs. Budget: DR')
+    _plot_dr(
+        ax, results, cost_budgets,
+        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
     )
+    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
+    # fig.tight_layout(rect=[0, 0, 0.85, 1])
 
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
-    fig.tight_layout(rect=[0, 0, 0.85, 1])
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '2_mpp_operation_probability_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 2 saved and data exported to Excel.")
@@ -237,8 +328,8 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
     print("#" * 60)
 
     network_sizes = [(3, 3), (4, 4), (5, 5)]
-    source_methods = ["steiner_tree", "all_edges"]
-    cost_budgets = list(range(10, 21, 2))
+    source_methods = ["all_edges", "steiner_tree"]
+    cost_budgets = list(range(24, 49, 4))
 
     all_plot_data = []
     results = {f'{s[0]}x{s[1]}_{sm}': {'ce_actual': [], 'dr': []} for s in network_sizes for sm in source_methods}
@@ -259,27 +350,38 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
                 results[label]['ce_actual'].append(summary_data['cost_efficiency_actual'])
                 results[label]['dr'].append(summary_data['average_dr'])
 
-                plot_point_data = {'Network_Size': f'{size[0]}x{size[1]}', 'Source Method': method, 'Budget': budget}
+                plot_point_data = {
+                    'Network_Size': f'{size[0]}x{size[1]}',
+                    'Source Method': method,
+                    'Budget': budget,
+                    'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
                 plot_point_data.update(summary_data)
-                plot_point_data['user_sets'] = str(user_sets_list)
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='MPP_Scalability_Network', index=False)
 
-    fig, ax1, ax2 = create_combo_plot('MPP Scalability (Network Size) vs. Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('MPP Scalability (Network Size) vs. Budget: CE and DR')
+    # # 同色条件：按“网络尺寸”分组
+    # _plot_combo(
+    #     ax1, ax2, results, cost_budgets,
+    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3x3 / 4x4 / 5x5
+    # )
+    # handles1, labels1 = ax1.get_legend_handles_labels()
+    # handles2, labels2 = ax2.get_legend_handles_labels()
+    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    # 同色条件：按“网络尺寸”分组
-    _plot_combo(
-        ax1, ax2, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3x3 / 4x4 / 5x5
+    fig, ax = create_dr_plot('MPP Scalability (Network Size) vs. Budget: DR')
+    _plot_dr(
+        ax, results, cost_budgets,
+        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
     )
-
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
-    fig.tight_layout(rect=[0, 0, 0.85, 1])
+    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
+    # fig.tight_layout(rect=[0, 0, 0.85, 1])
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '3_mpp_scalability_network_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 3 saved and data exported to Excel.")
@@ -292,8 +394,8 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
     print("#" * 60)
 
     num_users_list = [3, 4, 5]
-    source_methods = ["steiner_tree", "all_edges"]
-    cost_budgets = list(range(10, 21, 2))
+    source_methods = ["all_edges", "steiner_tree"]
+    cost_budgets = list(range(24, 49, 4))
 
     all_plot_data = []
     results = {f'{n}users_{sm}': {'ce_actual': [], 'dr': []} for n in num_users_list for sm in source_methods}
@@ -306,34 +408,46 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
                 print(f"\n--- Running: {num_users} Users ({method}), Budget={budget} ---")
                 params = {
                     'length_network': 5, 'width_network': 5, 'num_users': num_users,
-                    'p_op': 0.9, 'routing_method': 'MPP',
+                    'p_op': 0.8, 'routing_method': 'MPP',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
                 results[label]['ce_actual'].append(summary_data['cost_efficiency_actual'])
                 results[label]['dr'].append(summary_data['average_dr'])
 
-                plot_point_data = {'Num_Users': num_users, 'Source Method': method, 'Budget': budget}
+                plot_point_data = {
+                    'Num_Users': num_users,
+                    'Source Method': method,
+                    'Budget': budget,
+                    'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
                 plot_point_data.update(summary_data)
-                plot_point_data['user_sets'] = str(user_sets_list)
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='MPP_Scalability_Users', index=False)
 
-    fig, ax1, ax2 = create_combo_plot('MPP Scalability (Number of Users) vs. Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('MPP Scalability (Number of Users) vs. Budget: CE and DR')
+    # # 同色条件：按“用户数”分组
+    # _plot_combo(
+    #     ax1, ax2, results, cost_budgets,
+    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3users / 4users / 5users
+    # )
+    #
+    # handles1, labels1 = ax1.get_legend_handles_labels()
+    # handles2, labels2 = ax2.get_legend_handles_labels()
+    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    # 同色条件：按“用户数”分组
-    _plot_combo(
-        ax1, ax2, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3users / 4users / 5users
+    fig, ax = create_dr_plot('MPP Scalability (Number of Users) vs. Budget: DR')
+    _plot_dr(
+        ax, results, cost_budgets,
+        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
     )
-
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
-    fig.tight_layout(rect=[0, 0, 0.85, 1])
+    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
+    # fig.tight_layout(rect=[0, 0, 0.85, 1])
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '4_mpp_scalability_users_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 4 saved and data exported to Excel.")
@@ -347,7 +461,6 @@ if __name__ == "__main__":
 
     excel_filepath = os.path.join(output_directory, f"simulation_results_{timestamp}.xlsx")
 
-    # --- Pre-generate User Sets for Consistency ---
     print("Pre-generating user sets for consistency...")
     random.seed(RANDOM_SEED)
 
@@ -358,12 +471,12 @@ if __name__ == "__main__":
     # User sets for Plot 3 (varying network size, 3 users)
     base_user_sets_p3 = {}
     for size in [(3, 3), (4, 4), (5, 5)]:
-        sim = EventSimulator(size[0], size[1], EDGE_LENGTH_KM, MAX_PER_EDGE, 0.9, DECOHERENCE_TIME, num_users=3)
+        sim = EventSimulator(size[0], size[1], EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, num_users=3)
         base_user_sets_p3[f'{size[0]}x{size[1]}'] = [sim.user_gen.random_users(k=3) for _ in range(NUM_TRIALS)]
 
     # User sets for Plot 4 (5x5 network, varying users)
     base_user_sets_p4 = {}
-    sim_for_p4 = EventSimulator(4, 4, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.9, DECOHERENCE_TIME, 5)  # Max users
+    sim_for_p4 = EventSimulator(4, 4, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, 5)  # Max users
     for num_users in [3, 4, 5]:
         base_user_sets_p4[f'{num_users}_users'] = [sim_for_p4.user_gen.random_users(k=num_users) for _ in range(NUM_TRIALS)]
 
