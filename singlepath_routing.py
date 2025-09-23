@@ -58,16 +58,53 @@ class SPEntanglementRouting:
         # Check if the memory for user has any links to vc
         return vc in mem and len(mem[vc]) > 0
 
+    # def sp_routing(self, vc, paths, max_timeslot, deployed_sources):
+    #     time_slot = 0
+    #     hasGHZ = False
+    #
+    #     while not hasGHZ:
+    #         time_slot = time_slot + 1
+    #         print("\n")
+    #         print(f"[SinglePath] [Time slot {time_slot}]")
+    #         if time_slot >= max_timeslot:
+    #             time_slot = 0
+    #             break
+    #
+    #         # Step 1: Attempt to generate entanglement links over all edges in R
+    #         self.network.purge_all_expired(time_slot)
+    #         self.simulate_entanglement_links(deployed_sources, time_slot)
+    #         # self.network.show_network_status(current_time=time_slot)
+    #         # self.link_manager.show_active_links(time_slot)
+    #
+    #         # Step 2: For users who do not yet share a Bell pair with center, do swapping
+    #         S_prime = [u for u in self.user_set if u != vc and not self.has_shared_bell_pair(u, vc)]
+    #         for s in S_prime:
+    #             path = paths.get(s, [])
+    #             if path:
+    #                 self.swapping.entanglement_swapping(path=path, current_time=time_slot, p_op=self.p_op)
+    #
+    #         # Step 3: If all users now share Bell pairs with center node, do fusion
+    #         remote_users = [u for u in self.user_set if u != vc]
+    #         if all(self.has_shared_bell_pair(u, vc) for u in remote_users):
+    #             success = self.fusion.fuse_users(vc, user_list=self.user_set, current_time=time_slot, p_op=self.p_op)
+    #             if success:
+    #                 print(f"[Fusion] GHZ generated at vc={vc}")
+    #                 hasGHZ = True
+    #
+    #     return time_slot
+
     def sp_routing(self, vc, paths, max_timeslot, deployed_sources):
         time_slot = 0
         hasGHZ = False
+        num_ghz_in_slot = 0
 
         while not hasGHZ:
             time_slot = time_slot + 1
             print("\n")
             print(f"[SinglePath] [Time slot {time_slot}]")
             if time_slot >= max_timeslot:
-                time_slot = 0
+                if num_ghz_in_slot == 0:
+                    time_slot = 0
                 break
 
             # Step 1: Attempt to generate entanglement links over all edges in R
@@ -88,10 +125,15 @@ class SPEntanglementRouting:
             if all(self.has_shared_bell_pair(u, vc) for u in remote_users):
                 success = self.fusion.fuse_users(vc, user_list=self.user_set, current_time=time_slot, p_op=self.p_op)
                 if success:
-                    print(f"[Fusion] GHZ generated at vc={vc}")
-                    hasGHZ = True
+                    print(f"[Fusion] GHZ generated at vc={vc}, (Packing #{num_ghz_in_slot + 1})")
+                    num_ghz_in_slot += 1
+                    G_prime = self.link_manager.get_subgraph(current_time=time_slot)
 
-        return time_slot
+            # if num_ghz_in_slot > 0:
+            #     hasGHZ = True
+
+        return time_slot, num_ghz_in_slot
+
 
 
 if __name__ == "__main__":

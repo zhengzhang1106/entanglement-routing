@@ -127,7 +127,7 @@ class EventSimulator:
         vc, best_dr = self.select_center_node(user_set, edge_probs, deployed_sources)
         if vc is None:
             print(f"\n[Routing] Final selected center: {vc}")
-            return 0
+            return 0, 0
 
         # paths: the routing solution computed for the selected central node remains fixed
         paths = self.get_shortest_paths_SP(vc, user_set)
@@ -136,8 +136,8 @@ class EventSimulator:
             print(f"  {vc} -> {s}: {path}")
 
         SProuting = SPEntanglementRouting(self.network, user_set, p_op)
-        time_to_success = SProuting.sp_routing(vc, paths, self.max_timeslot, deployed_sources)
-        return time_to_success
+        time_to_success, num_ghz = SProuting.sp_routing(vc, paths, self.max_timeslot, deployed_sources)
+        return time_to_success, num_ghz
 
     def run_single_trial_MPG(self, user_set, p_op, edge_probs, deployed_sources):
         G_prime = self.link_manager.get_subgraph(current_time=1)
@@ -216,13 +216,13 @@ class EventSimulator:
 
             num_ghz = 1  # Default for SP, MPG, MPC
 
-            if routing_method == 'SP':
-                time_to_success = self.run_single_trial_SP(user_set, self.p_op, edge_probs, deployed_dict)
+            if routing_method == 'Reactive Routing':
+                time_to_success, num_ghz = self.run_single_trial_SP(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPG':
                 time_to_success = self.run_single_trial_MPG(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPC':
                 time_to_success = self.run_single_trial_MPC(user_set, self.p_op, deployed_dict)
-            elif routing_method == 'MPP':
+            elif routing_method == 'Proactive Routing':
                 time_to_success, num_ghz = self.run_single_trial_MPP(user_set, self.p_op, deployed_dict)
             else:
                 raise ValueError(f"Unknown routing_method: {routing_method}")

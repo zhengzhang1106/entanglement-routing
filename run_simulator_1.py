@@ -12,8 +12,10 @@ RANDOM_SEED = 1
 NUM_TRIALS = 100
 MAX_TIMEESLOT_PER_TRIAL = 100
 DECOHERENCE_TIME = 2
-MAX_PER_EDGE = 3
+MAX_PER_EDGE = 8
 EDGE_LENGTH_KM = 1
+
+COST_BUDGETS = list(range(24, 59, 4))
 
 
 def run_and_get_metrics(params, user_sets_list):
@@ -28,7 +30,7 @@ def run_and_get_metrics(params, user_sets_list):
         num_users=params['num_users'],
         p_op=params['p_op'],
         max_per_edge=MAX_PER_EDGE,
-        decoherence_time=DECOHERENCE_TIME,
+        decoherence_time=params.get('decoherence_time', DECOHERENCE_TIME),
         max_timeslot=MAX_TIMEESLOT_PER_TRIAL
     )
 
@@ -51,7 +53,7 @@ def run_and_get_metrics(params, user_sets_list):
     return summary
 
 
-def create_combo_plot(title, x_label='Source Budget'):
+def create_combo_plot(title, x_label='Quantum Source Budget'):
     """
     Creates a matplotlib figure and axes with a shared x-axis.
     Cost-Efficiency (CE) is a line plot on the left Y-axis.
@@ -61,25 +63,26 @@ def create_combo_plot(title, x_label='Source Budget'):
     ax2 = ax1.twinx()
 
     ax1.set_xlabel(x_label)
-    ax1.set_ylabel('Cost-Efficiency (CE)', color='tab:blue', fontsize=14)
-    ax2.set_ylabel('Distribution Rate (DR)', color='tab:red', fontsize=14)
+    ax1.set_ylabel('Cost-Efficiency (CE)', color='tab:blue', fontsize=16)
+    ax2.set_ylabel('Distribution Rate (DR)', color='tab:red', fontsize=16)
     ax1.tick_params(axis='y', labelcolor='tab:blue')
     ax2.tick_params(axis='y', labelcolor='tab:red')
     ax1.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
-    ax1.set_title(title, fontsize=16)
+    ax1.set_title(title, fontsize=18)
 
     return fig, ax1, ax2
 
 
-def create_dr_plot(title, x_label='Source Budget'):
+def create_dr_plot(title, x_label='Quantum Source Budget'):
     """
     Creates a single-axis bar plot for Distribution Rate (DR) only.
     """
     fig, ax = plt.subplots(figsize=(14, 8))
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel('Distribution Rate (DR)', fontsize=14)
+    ax.set_xlabel(x_label, fontsize=18)
+    ax.set_ylabel('Distribution Rate (DR)', fontsize=18)
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
-    ax.set_title(title, fontsize=16)
+    ax.set_title(title, fontsize=20)
+    ax.tick_params(axis='both', labelsize=16)
     return fig, ax
 
 
@@ -105,7 +108,7 @@ def _plot_dr(ax, results_dict, cost_budgets, group_key_fn):
     # 稳定顺序绘制：颜色按组一致；steiner=实心，all_edges=空心+斜纹
     for i, (label, data) in enumerate(results_dict.items()):
         try:
-            _key, method = label.split('_', 1)
+            _key, method = label.split('-', 1)
         except ValueError:
             method = 'steiner_tree'  # 兜底
 
@@ -129,7 +132,8 @@ def place_legend_inside(ax, loc='upper left'):
         bbox_to_anchor=(0.02, 0.98),  # 轴内偏移（左上角附近）
         borderaxespad=0.4,
         frameon=True,
-        framealpha=0.9
+        framealpha=0.9,
+        prop={'size': 16}
     )
 
 
@@ -194,20 +198,20 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     print("###   GENERATING PLOT 1: Protocols vs. Budget   ###")
     print("#" * 60)
 
-    protocols = ['SP', 'MPP']
+    protocols = ['Reactive Routing', 'Proactive Routing']
     source_methods = ["all_edges", "steiner_tree"]
-    cost_budgets = list(range(24, 37, 2))
+    cost_budgets = COST_BUDGETS
 
     all_plot_data = []
-    results = {f'{p}_{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for budget in cost_budgets:
-                label = f'{protocol}_{method}'
+                label = f'{protocol}-{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 8, 'width_network': 8, 'num_users': 3,
+                    'length_network': 3, 'width_network': 3, 'num_users': 3,
                     'p_op': 0.8, 'routing_method': protocol,
                     'source_method': method, 'cost_budget': budget
                 }
@@ -222,7 +226,6 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
                     'Budget': budget,
                     'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
                     'user_sets': str(user_sets_list)
-
                 }
                 plot_point_data.update(summary_data)
                 all_plot_data.append(plot_point_data)
@@ -230,7 +233,7 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Protocols_vs_Budget', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('Protocols vs. Source Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('Protocols vs. Quantum Source Budget: CE and DR')
     # _plot_combo(
     #     ax1, ax2, results, cost_budgets,
     #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]
@@ -239,10 +242,10 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     # handles2, labels2 = ax2.get_legend_handles_labels()
     # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    fig, ax = create_dr_plot('Protocols vs. Source Budget: DR')
+    fig, ax = create_dr_plot('Protocols vs. Quantum Source Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
     # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
     # fig.tight_layout(rect=[0, 0, 0.85, 1])
@@ -254,27 +257,27 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     print("\n[SUCCESS] Plot 1 saved and data exported to Excel.")
 
 
-def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
-    """Generates Plot 2: MP-P Robustness vs. Budget"""
+def plot_mpp_op_vs_budget(excel_writer, output_dir, user_sets_list):
+    """Generates Plot 2: MP-P p_op vs. Budget"""
     print("\n" + "#" * 60)
-    print("###   GENERATING PLOT 2: MP-P Robustness vs. Budget   ###")
+    print("###   GENERATING PLOT 2: MP-P p_op vs. Budget   ###")
     print("#" * 60)
 
     p_ops = [0.6, 0.7, 0.8, 0.9]
     source_methods = ["all_edges", "steiner_tree"]
-    cost_budgets = list(range(24, 49, 4))
+    cost_budgets = COST_BUDGETS
 
     all_plot_data = []
-    results = {f'p{p_op}_{sm}': {'ce_actual': [], 'dr': []} for p_op in p_ops for sm in source_methods}
+    results = {f'p_op{p_op}-{sm}': {'ce_actual': [], 'dr': []} for p_op in p_ops for sm in source_methods}
 
     for method in source_methods:
         for p_op in p_ops:
             for budget in cost_budgets:
-                label = f'p{p_op}_{method}'
+                label = f'p_op{p_op}-{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': 3, 'width_network': 3, 'num_users': 3,
-                    'p_op': p_op, 'routing_method': 'MPP',
+                    'p_op': p_op, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -283,7 +286,7 @@ def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
                 results[label]['dr'].append(summary_data['average_dr'])
 
                 plot_point_data = {
-                    'P_op': p_op,
+                    'p_op': p_op,
                     'Source Method': method,
                     'Budget': budget,
                     'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
@@ -293,23 +296,23 @@ def plot_mpp_robustness_vs_budget(excel_writer, output_dir, user_sets_list):
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
-    df.to_excel(excel_writer, sheet_name='MPP_Operation Probability', index=False)
+    df.to_excel(excel_writer, sheet_name='Proactive Routing Operation Probability', index=False)
 
     # fig, ax1, ax2 = create_combo_plot('MPP Operation Probability vs. Budget: CE and DR')
     # # 同色条件：按“p_op”分组
     # _plot_combo(
     #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # p0.7 / p0.8 / p0.9
+    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # p0.7 / p0.8 / p0.9
     # )
     #
     # handles1, labels1 = ax1.get_legend_handles_labels()
     # handles2, labels2 = ax2.get_legend_handles_labels()
     # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    fig, ax = create_dr_plot('MPP Operation Probability vs. Budget: DR')
+    fig, ax = create_dr_plot('Proactive Routing Operation Probability vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
     # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
     # fig.tight_layout(rect=[0, 0, 0.85, 1])
@@ -329,20 +332,20 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
 
     network_sizes = [(3, 3), (4, 4), (5, 5)]
     source_methods = ["all_edges", "steiner_tree"]
-    cost_budgets = list(range(24, 49, 4))
+    cost_budgets = COST_BUDGETS
 
     all_plot_data = []
-    results = {f'{s[0]}x{s[1]}_{sm}': {'ce_actual': [], 'dr': []} for s in network_sizes for sm in source_methods}
+    results = {f'{s[0]}x{s[1]}-{sm}': {'ce_actual': [], 'dr': []} for s in network_sizes for sm in source_methods}
 
     for method in source_methods:
         for size in network_sizes:
             user_sets_list = base_user_sets_lists[f'{size[0]}x{size[1]}']
             for budget in cost_budgets:
-                label = f'{size[0]}x{size[1]}_{method}'
+                label = f'{size[0]}x{size[1]}-{method}'
                 print(f"\n--- Running: {size[0]}x{size[1]} ({method}), Budget={budget} ---")
                 params = {
                     'length_network': size[0], 'width_network': size[1], 'num_users': 3,
-                    'p_op': 0.8, 'routing_method': 'MPP',
+                    'p_op': 0.8, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -361,22 +364,22 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
-    df.to_excel(excel_writer, sheet_name='MPP_Scalability_Network', index=False)
+    df.to_excel(excel_writer, sheet_name='Proactive Routing_Scalability_Network', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('MPP Scalability (Network Size) vs. Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('Proactive Routing Scalability (Network Size) vs. Budget: CE and DR')
     # # 同色条件：按“网络尺寸”分组
     # _plot_combo(
     #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3x3 / 4x4 / 5x5
+    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # 3x3 / 4x4 / 5x5
     # )
     # handles1, labels1 = ax1.get_legend_handles_labels()
     # handles2, labels2 = ax2.get_legend_handles_labels()
     # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    fig, ax = create_dr_plot('MPP Scalability (Network Size) vs. Budget: DR')
+    fig, ax = create_dr_plot('Proactive Routing Scalability (Network Size) vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
     # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
     # fig.tight_layout(rect=[0, 0, 0.85, 1])
@@ -395,20 +398,20 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
 
     num_users_list = [3, 4, 5]
     source_methods = ["all_edges", "steiner_tree"]
-    cost_budgets = list(range(24, 49, 4))
+    cost_budgets = COST_BUDGETS
 
     all_plot_data = []
-    results = {f'{n}users_{sm}': {'ce_actual': [], 'dr': []} for n in num_users_list for sm in source_methods}
+    results = {f'{n}users-{sm}': {'ce_actual': [], 'dr': []} for n in num_users_list for sm in source_methods}
 
     for method in source_methods:
         for num_users in num_users_list:
             user_sets_list = base_user_sets_lists[f'{num_users}_users']
             for budget in cost_budgets:
-                label = f'{num_users}users_{method}'
+                label = f'{num_users}users-{method}'
                 print(f"\n--- Running: {num_users} Users ({method}), Budget={budget} ---")
                 params = {
-                    'length_network': 5, 'width_network': 5, 'num_users': num_users,
-                    'p_op': 0.8, 'routing_method': 'MPP',
+                    'length_network': 3, 'width_network': 3, 'num_users': num_users,
+                    'p_op': 0.8, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -426,23 +429,23 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
                 all_plot_data.append(plot_point_data)
 
     df = pd.DataFrame(all_plot_data)
-    df.to_excel(excel_writer, sheet_name='MPP_Scalability_Users', index=False)
+    df.to_excel(excel_writer, sheet_name='Proactive Routing_Scalability_Users', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('MPP Scalability (Number of Users) vs. Budget: CE and DR')
+    # fig, ax1, ax2 = create_combo_plot('Proactive Routing Scalability (Number of Users) vs. Budget: CE and DR')
     # # 同色条件：按“用户数”分组
     # _plot_combo(
     #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]  # 3users / 4users / 5users
+    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # 3users / 4users / 5users
     # )
     #
     # handles1, labels1 = ax1.get_legend_handles_labels()
     # handles2, labels2 = ax2.get_legend_handles_labels()
     # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
 
-    fig, ax = create_dr_plot('MPP Scalability (Number of Users) vs. Budget: DR')
+    fig, ax = create_dr_plot('Proactive Routing Scalability (Number of Users) vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
-        group_key_fn=lambda lbl: lbl.split('_', 1)[0]
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
     # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
     # fig.tight_layout(rect=[0, 0, 0.85, 1])
@@ -451,6 +454,63 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
     fig.savefig(os.path.join(output_dir, '4_mpp_scalability_users_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 4 saved and data exported to Excel.")
+
+
+def plot_mpp_decoherence_vs_budget(excel_writer, output_dir, user_sets_list):
+    """Generates Plot: MP-P Decoherence Time vs. Budget"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING PLOT: MP-P Decoherence Time vs. Budget   ###")
+    print("#" * 60)
+
+    decoherence_times = [1, 2, 3, 4]  # Varying decoherence time
+    source_methods = ["all_edges", "steiner_tree"]
+    cost_budgets = COST_BUDGETS
+
+    all_plot_data = []
+    results = {f'dt{dt}-{sm}': {'ce_actual': [], 'dr': []} for dt in decoherence_times for sm in source_methods}
+
+    for method in source_methods:
+        for dt in decoherence_times:
+            for budget in cost_budgets:
+                label = f'dt{dt}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': 3, 'width_network': 3, 'num_users': 3,
+                    'p_op': 0.6,  # Fixed p_op
+                    'routing_method': 'Proactive Routing',
+                    'source_method': method,
+                    'cost_budget': budget,
+                    'decoherence_time': dt  # Use the varying decoherence time
+                }
+                summary_data = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['ce_actual'].append(summary_data['cost_efficiency_actual'])
+                results[label]['dr'].append(summary_data['average_dr'])
+
+                plot_point_data = {
+                    'Decoherence_Time': dt,
+                    'Source Method': method,
+                    'Budget': budget,
+                    'Deployed_Dicts': summary_data.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                plot_point_data.update(summary_data)
+                all_plot_data.append(plot_point_data)
+
+    df = pd.DataFrame(all_plot_data)
+    df.to_excel(excel_writer, sheet_name='Proactive Routing_Decoherence_Time', index=False)
+
+    fig, ax = create_dr_plot('Proactive Routing Decoherence Time vs. Budget: DR')
+    _plot_dr(
+        ax, results, cost_budgets,
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # Group by 'dt1', 'dt2', etc.
+    )
+
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'mpp_decoherence_vs_budget.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Plot 5 on Decoherence Time saved and data exported to Excel.")
 
 
 if __name__ == "__main__":
@@ -476,7 +536,7 @@ if __name__ == "__main__":
 
     # User sets for Plot 4 (5x5 network, varying users)
     base_user_sets_p4 = {}
-    sim_for_p4 = EventSimulator(4, 4, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, 5)  # Max users
+    sim_for_p4 = EventSimulator(3, 3, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, 5)  # Max users
     for num_users in [3, 4, 5]:
         base_user_sets_p4[f'{num_users}_users'] = [sim_for_p4.user_gen.random_users(k=num_users) for _ in range(NUM_TRIALS)]
 
@@ -486,7 +546,10 @@ if __name__ == "__main__":
         pd.DataFrame([{"status": "initializing"}]).to_excel(writer, sheet_name="README", index=False)
 
         plot_protocols_vs_budget(writer, output_directory, user_sets_p1_p2)
-        plot_mpp_robustness_vs_budget(writer, output_directory, user_sets_p1_p2)
+        plot_mpp_op_vs_budget(writer, output_directory, user_sets_p1_p2)
+        plot_mpp_decoherence_vs_budget(writer, output_directory, user_sets_p1_p2)
+
+
         # plot_mpp_scalability_network_size_vs_budget(writer, output_directory, base_user_sets_p3)
         # plot_mpp_scalability_users_vs_budget(writer, output_directory, base_user_sets_p4)
 
