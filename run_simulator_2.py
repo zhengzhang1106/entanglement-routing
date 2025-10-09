@@ -1,0 +1,564 @@
+import random
+import matplotlib.pyplot as plt
+import os
+import pandas as pd
+from datetime import datetime
+from event_simulator import EventSimulator
+from entanglement_distribution import EntanglementDistribution
+import numpy as np
+from network_request import RequestGenerator
+
+
+# --- Simulation Parameters ---
+RANDOM_SEED = 1
+NUM_TRIALS = 80
+MAX_TIMEESLOT_PER_TRIAL = 50
+
+DECOHERENCE_TIME = 1
+MAX_PER_EDGE = 8
+EDGE_LENGTH_KM = 10
+
+
+# Fig.1 基础参数
+LENGTH_NETWORK_PROTOCOLS_1 = 5
+WIDTH_NETWORK_PROTOCOLS_1 = 5
+NUM_USERS_PROTOCOLS_1 = 3
+OP_PROTOCOLS_1 = 0.8
+
+# Fig.2（横轴是 p_op）
+LENGTH_NETWORK_OP_2 = 5
+WIDTH_NETWORK_OP_2 = 5
+NUM_USERS_OP_2 = 3
+P_OP_LIST_2 = [0.6, 0.7, 0.8, 0.9]
+
+# Fig.3（横轴是 Network Size）
+NET_SIZES_3 = [(3, 3), (4, 4), (5, 5)]
+NUM_USERS_NET_SIZE_3 = 3
+OP_NET_SIZE_3 = 0.8
+
+# Fig.4（横轴是 #Users）
+LENGTH_NETWORK_USER_4 = 3
+WIDTH_NETWORK_USER_4 = 3
+NUM_USERS_LIST_4 = [3, 4, 5]
+OP_USER_4 = 0.8
+
+# Fig.5（横轴是 Decoherence Time）
+LENGTH_NETWORK_DT_5 = 5
+WIDTH_NETWORK_DT_5 = 5
+NUM_USERS_DT_5 = 3
+OP_DT_5 = 0.6
+DT_LIST_5 = [1, 2, 3, 4]
+
+EDGE_LIST = [
+                ("Setagaya", "Ota", 12.045),
+                ("Setagaya", "Shinagawa", 9.072),
+                ("Setagaya", "Minato", 9.945),
+                ("Setagaya", "Shinjuku", 7.916),
+                ("Setagaya", "Nerima", 10.885),
+                ("Ota", "Shinagawa", 6.464),
+                ("Shinagawa", "Minato", 6.788),
+                ("Minato", "Koto", 7.195),
+                ("Minato", "Chiyoda", 4.972),
+                ("Shinjuku", "Minato", 6.878),
+                ("Shinjuku", "Chiyoda", 5.461),
+                ("Shinjuku", "Itabashi", 7.446),
+                ("Shinjuku", "Nerima", 7.504),
+                ("Nerima", "Itabashi", 6.341),
+                ("Koto", "Edogawa", 6.868),
+                ("Chiyoda", "Koto", 7.248),
+                ("Chiyoda", "Edogawa", 11.528),
+                ("Chiyoda", "Bunkyo", 2.601),
+                ("Bunkyo", "Adachi", 9.701),
+                ("Itabashi", "Bunkyo", 7.239),
+                ("Edogawa", "Adachi", 10.682)
+            ]
+
+
+def nodes_from_edge_list(edge_list):
+    nodes = set()
+    for u, v, *rest in edge_list:
+        nodes.add(u); nodes.add(v)
+    return sorted(nodes)
+
+
+# Default fixed budget for Fig.2–Fig.5 (middle of COST_BUDGETS)
+# FIXED_BUDGET = 2 * LENGTH_NETWORK_PROTOCOLS_1 * (WIDTH_NETWORK_PROTOCOLS_1 - 1)
+
+# Budgets sweep for Fig.1; others will use a fixed budget chosen from here
+# COST_BUDGETS = list(range(30, 60, 4))
+
+FIXED_BUDGET = 21
+COST_BUDGETS = list(range(16, 43, 4))
+
+
+def export_run_parameters(writer):
+    """Write key run parameters into a dedicated Excel sheet."""
+    rows = [
+        ("RANDOM_SEED", RANDOM_SEED),
+        ("NUM_TRIALS", NUM_TRIALS),
+        ("MAX_TIMEESLOT_PER_TRIAL", MAX_TIMEESLOT_PER_TRIAL),
+        ("DECOHERENCE_TIME(default)", DECOHERENCE_TIME),
+        ("MAX_PER_EDGE", MAX_PER_EDGE),
+        ("EDGE_LENGTH_KM", EDGE_LENGTH_KM),
+        ("COST_BUDGETS", COST_BUDGETS),
+        ("FIXED_BUDGET(for Fig.2–5)", FIXED_BUDGET),
+
+        # Fig.1
+        ("LENGTH_NETWORK_PROTOCOLS_1", LENGTH_NETWORK_PROTOCOLS_1, "Fig.1"),
+        ("WIDTH_NETWORK_PROTOCOLS_1",  WIDTH_NETWORK_PROTOCOLS_1,  "Fig.1"),
+        ("NUM_USERS_PROTOCOLS_1",      NUM_USERS_PROTOCOLS_1,      "Fig.1"),
+        ("OP_PROTOCOLS_1",             OP_PROTOCOLS_1,             "Fig.1"),
+
+        # Fig.2
+        ("LENGTH_NETWORK_OP_2",        LENGTH_NETWORK_OP_2,        "Fig.2"),
+        ("WIDTH_NETWORK_OP_2",         WIDTH_NETWORK_OP_2,         "Fig.2"),
+        ("NUM_USERS_OP_2",             NUM_USERS_OP_2,             "Fig.2"),
+        ("P_OP_LIST_2",                P_OP_LIST_2,                "Fig.2"),
+
+        # Fig.3
+        ("NET_SIZES_3",                NET_SIZES_3,                "Fig.3"),
+        ("NUM_USERS_NET_SIZE_3",       NUM_USERS_NET_SIZE_3,       "Fig.3"),
+        ("OP_NET_SIZE_3",              OP_NET_SIZE_3,              "Fig.3"),
+
+        # Fig.4
+        ("LENGTH_NETWORK_USER_4",      LENGTH_NETWORK_USER_4,      "Fig.4"),
+        ("WIDTH_NETWORK_USER_4",       WIDTH_NETWORK_USER_4,       "Fig.4"),
+        ("NUM_USERS_LIST_4",           NUM_USERS_LIST_4,           "Fig.4"),
+        ("OP_USER_4",                  OP_USER_4,                  "Fig.4"),
+
+        # Fig.5
+        ("LENGTH_NETWORK_DT_5",        LENGTH_NETWORK_DT_5,        "Fig.5"),
+        ("WIDTH_NETWORK_DT_5",         WIDTH_NETWORK_DT_5,         "Fig.5"),
+        ("NUM_USERS_DT_5",             NUM_USERS_DT_5,             "Fig.5"),
+        ("OP_DT_5",                    OP_DT_5,                    "Fig.5"),
+        ("DT_LIST_5",                  DT_LIST_5,                  "Fig.5"),
+    ]
+    df = pd.DataFrame(rows, columns=["Parameter", "Value", "Used In"])
+    df.to_excel(writer, sheet_name="Run_Params", index=False)
+
+
+def run_and_get_metrics(params, user_sets_list):
+    simulator = EventSimulator(
+        # length_network=params['length_network'],
+        # width_network=params['width_network'],
+        # edge_length_km=EDGE_LENGTH_KM,
+        edge_list=EDGE_LIST,
+        num_users=params['num_users'],
+        p_op=params['p_op'],
+        max_per_edge=MAX_PER_EDGE,
+        decoherence_time=params.get('decoherence_time', DECOHERENCE_TIME),
+        max_timeslot=MAX_TIMEESLOT_PER_TRIAL
+    )
+
+    dr_object = EntanglementDistribution()
+    random.seed(RANDOM_SEED)
+
+    deployed_dicts_per_trial = simulator.run_trials(
+        user_sets=user_sets_list,
+        routing_method=params['routing_method'],
+        source_method=params['source_method'],
+        seed=RANDOM_SEED,
+        dr_object=dr_object,
+        cost_budget=params['cost_budget']
+    )
+
+    summary = dr_object.get_summary_dict()
+    summary['deployed_dicts'] = str(deployed_dicts_per_trial)
+    return summary
+
+
+# ---------- Styling helpers ----------
+def line_style_for(method: str) -> str:
+    return '-' if method == 'OP' else '--'
+
+
+def bar_style_kwargs(method: str, color):
+    if method == 'OP':
+        return dict(color=color, alpha=0.75)
+    else:
+        return dict(facecolor='none', edgecolor=color, hatch='//', linewidth=1.5)
+
+
+def place_legend_inside(ax, loc='upper left'):
+    return ax.legend(
+        loc=loc,
+        bbox_to_anchor=(0.02, 0.98),
+        borderaxespad=0.4, frameon=True, framealpha=0.9,
+        prop={'size': 14}
+    )
+
+
+# ---------- Generic plotting helpers ----------
+def create_dr_plot(title, x_label):
+    fig, ax = plt.subplots(figsize=(14, 8))
+    ax.set_xlabel(x_label, fontsize=18)
+    ax.set_ylabel('Distribution Rate (DR)', fontsize=18)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
+    ax.set_title(title, fontsize=20)
+    ax.tick_params(axis='both', labelsize=14)
+    return fig, ax
+
+def create_combo_plot(title, x_label):
+    fig, ax1 = plt.subplots(figsize=(14, 8))
+    ax2 = ax1.twinx()
+    ax1.set_xlabel(x_label, fontsize=18)
+    ax1.set_ylabel('Cost-Efficiency (CE)', color='tab:blue', fontsize=18)
+    ax2.set_ylabel('Distribution Rate (DR)', color='tab:red', fontsize=18)
+    ax1.tick_params(axis='y', labelcolor='tab:blue')
+    ax2.tick_params(axis='y', labelcolor='tab:red')
+    ax1.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
+    ax1.set_title(title, fontsize=20)
+    return fig, ax1, ax2
+
+
+def plot_grouped_bars(ax, results_dict, x_positions, x_ticklabels, group_key_fn):
+    """
+    绘制“同色不同表现”的分组柱状图。
+    x_positions: ndarray (长度 = x 类别数，等距)
+    x_ticklabels: 刻度文本
+    """
+    groups = []
+    for label in results_dict.keys():
+        g = group_key_fn(label)
+        if g not in groups:
+            groups.append(g)
+    group_to_color_idx = {g: i for i, g in enumerate(groups)}
+
+    num_series = len(results_dict)
+    total_width = 0.8  # 柱群总宽度
+    bar_width = total_width / num_series
+
+    for i, (label, data) in enumerate(results_dict.items()):
+        try:
+            _key, method = label.split('-', 1)
+        except ValueError:
+            method = 'OP'
+        color = plt.cm.get_cmap('tab10')(group_to_color_idx[group_key_fn(label)] % 10)
+
+        x = x_positions + (i - (num_series - 1) / 2) * bar_width
+        ax.bar(x, data['dr'], width=bar_width, label=label, **bar_style_kwargs(method, color))
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(x_ticklabels)
+
+
+# ===================== FIGURE 1 =====================
+def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
+    """Fig.1: Protocols vs Budget (x = budget)"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING FIG.1: Protocols vs Budget   ###")
+    print("#" * 60)
+
+    protocols = ['RR', 'PR']
+    source_methods = ["NOP", "OP"]
+    cost_budgets = COST_BUDGETS
+
+    all_plot_data = []
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+
+    for method in source_methods:
+        for protocol in protocols:
+            for budget in cost_budgets:
+                label = f'{protocol}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': LENGTH_NETWORK_PROTOCOLS_1, 'width_network': WIDTH_NETWORK_PROTOCOLS_1,
+                    'num_users': NUM_USERS_PROTOCOLS_1,
+                    'p_op': OP_PROTOCOLS_1, 'routing_method': protocol,
+                    'source_method': method, 'cost_budget': budget
+                }
+                summary = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['dr'].append(summary['average_dr'])
+
+                row = {
+                    'Protocol': protocol, 'Source Method': method, 'Budget': budget,
+                    'Deployed_Dicts': summary.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                row.update(summary)
+                all_plot_data.append(row)
+
+    pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig1_Protocols_vs_Budget', index=False)
+
+    # 画 DR（更清晰）
+    fig, ax = create_dr_plot('Protocols vs. Quantum Source Budget: DR', x_label='Quantum Source Budget')
+    x_positions = np.arange(len(cost_budgets), dtype=float)
+    plot_grouped_bars(
+        ax, results, x_positions, [str(b) for b in cost_budgets],
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]
+    )
+    place_legend_inside(ax, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, '1_protocols_vs_budget.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Fig.1 saved and data exported.")
+
+
+# ===================== FIGURE 2 =====================
+def plot_mpp_op_var(excel_writer, output_dir, user_sets_list):
+    """Fig.2: Proactive Routing — x = p_op, budget fixed"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING FIG.2: Proactive Routing — x = p_op (Budget fixed)   ###")
+    print("#" * 60)
+
+    p_ops = P_OP_LIST_2
+    source_methods = ["NOP", "OP"]
+    protocols = ['RR', 'PR']
+
+    all_plot_data = []
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+
+    for method in source_methods:
+        for protocol in protocols:
+            for p_op in p_ops:
+                budget = FIXED_BUDGET
+                label = f'{protocol}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': LENGTH_NETWORK_OP_2, 'width_network': WIDTH_NETWORK_OP_2,
+                    'num_users': NUM_USERS_OP_2,
+                    'p_op': p_op, 'routing_method': protocol,
+                    'source_method': method, 'cost_budget': budget
+                }
+                summary = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['dr'].append(summary['average_dr'])
+
+                row = {
+                    'Protocol': protocol,
+                    'p_op': p_op, 'Source Method': method, 'Budget(fixed)': budget,
+                    'Deployed_Dicts': summary.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                row.update(summary)
+                all_plot_data.append(row)
+
+    pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig2_p_op_Var', index=False)
+
+    fig, ax = create_dr_plot('Protocols vs Operation Probability: DR', x_label='Operation Probability, p_op')
+    x_positions = np.arange(len(p_ops), dtype=float)
+    plot_grouped_bars(
+        ax, results, x_positions, [str(p) for p in p_ops],
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # p_op0.6 / p_op0.7 ...
+    )
+    place_legend_inside(ax)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, '2_proactive_op_var.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Fig.2 saved and data exported.")
+
+
+# ===================== FIGURE 3 =====================
+def plot_mpp_scalability_network_size_var(excel_writer, output_dir, base_user_sets_lists):
+    """Fig.3: Proactive Routing — x = Network Size, budget fixed"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING FIG.3: Proactive Routing — x = Network Size (Budget fixed)   ###")
+    print("#" * 60)
+
+    sizes = NET_SIZES_3
+    source_methods = ["NOP", "OP"]
+    protocols = ['RR', 'PR']
+
+    all_plot_data = []
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+
+    for method in source_methods:
+        for protocol in protocols:
+            for size in sizes:
+                user_sets_list = base_user_sets_lists[f'{size[0]}x{size[1]}']
+                budget = FIXED_BUDGET
+                label = f'{protocol}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': size[0], 'width_network': size[1], 'num_users': NUM_USERS_NET_SIZE_3,
+                    'p_op': OP_NET_SIZE_3, 'routing_method': protocol,
+                    'source_method': method, 'cost_budget': budget
+                }
+                summary = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['dr'].append(summary['average_dr'])
+
+                row = {
+                    'Protocol': protocol,
+                    'Network_Size': f'{size[0]}x{size[1]}', 'Source Method': method, 'Budget(fixed)': budget,
+                    'Deployed_Dicts': summary.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                row.update(summary)
+                all_plot_data.append(row)
+
+    pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig3_NetSize_Var', index=False)
+
+    fig, ax = create_dr_plot('Protocols vs Network Size: DR', x_label='Network Size')
+    x_positions = np.arange(len(sizes), dtype=float)
+    ticklabels = [f'{a}x{b}' for a, b in sizes]
+    plot_grouped_bars(
+        ax, results, x_positions, ticklabels,
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # '3x3' / '4x4' / '5x5'
+    )
+    place_legend_inside(ax)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, '3_proactive_network_size_var.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Fig.3 saved and data exported.")
+
+
+# ===================== FIGURE 4 =====================
+def plot_mpp_scalability_users_var(excel_writer, output_dir, base_user_sets_lists):
+    """Fig.4: Proactive Routing — x = #Users, budget fixed"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING FIG.4: Proactive Routing — x = #Users (Budget fixed)   ###")
+    print("#" * 60)
+
+    num_users_list = NUM_USERS_LIST_4
+    source_methods = ["NOP", "OP"]
+    protocols = ['RR', 'PR']
+
+    all_plot_data = []
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+
+    for method in source_methods:
+        for protocol in protocols:
+            for num_users in num_users_list:
+                user_sets_list = base_user_sets_lists[f'{num_users}_users']
+                budget = FIXED_BUDGET
+                label = f'{protocol}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': LENGTH_NETWORK_USER_4, 'width_network': WIDTH_NETWORK_USER_4, 'num_users': num_users,
+                    'p_op': OP_USER_4, 'routing_method': protocol,
+                    'source_method': method, 'cost_budget': budget
+                }
+                summary = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['dr'].append(summary['average_dr'])
+
+                row = {
+                    'Protocol': protocol,
+                    'Num_Users': num_users, 'Source Method': method, 'Budget(fixed)': budget,
+                    'Deployed_Dicts': summary.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                row.update(summary)
+                all_plot_data.append(row)
+
+    pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig4_NumUsers_Var', index=False)
+
+    fig, ax = create_dr_plot('Protocols vs Number of Users: DR', x_label='Number of Users')
+    x_positions = np.arange(len(num_users_list), dtype=float)
+    plot_grouped_bars(
+        ax, results, x_positions, [str(n) for n in num_users_list],
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # '3users' / '4users' / '5users'
+    )
+    place_legend_inside(ax)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, '4_proactive_num_users_var.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Fig.4 saved and data exported.")
+
+
+# ===================== FIGURE 5 =====================
+def plot_mpp_decoherence_var(excel_writer, output_dir, user_sets_list):
+    """Fig.5: Proactive Routing — x = Decoherence Time, budget fixed"""
+    print("\n" + "#" * 60)
+    print("###   GENERATING FIG.5: Proactive Routing — x = Decoherence Time (Budget fixed)   ###")
+    print("#" * 60)
+
+    dt_list = DT_LIST_5
+    source_methods = ["NOP", "OP"]
+    protocols = ['RR', 'PR']
+
+    all_plot_data = []
+    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+
+    for method in source_methods:
+        for protocol in protocols:
+            for dt in dt_list:
+                budget = FIXED_BUDGET
+                label = f'{protocol}-{method}'
+                print(f"\n--- Running: {label}, Budget={budget} ---")
+                params = {
+                    'length_network': LENGTH_NETWORK_DT_5, 'width_network': WIDTH_NETWORK_DT_5,
+                    'num_users': NUM_USERS_DT_5,
+                    'p_op': OP_DT_5,
+                    'routing_method': protocol,
+                    'source_method': method,
+                    'cost_budget': budget,
+                    'decoherence_time': dt
+                }
+                summary = run_and_get_metrics(params, user_sets_list)
+
+                results[label]['dr'].append(summary['average_dr'])
+
+                row = {
+                    'Protocol': protocol,
+                    'Decoherence_Time': dt, 'Source Method': method, 'Budget(fixed)': budget,
+                    'Deployed_Dicts': summary.get('deployed_dicts', 'N/A'),
+                    'user_sets': str(user_sets_list)
+                }
+                row.update(summary)
+                all_plot_data.append(row)
+
+    pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig5_Decoherence_Var', index=False)
+
+    fig, ax = create_dr_plot('Protocols vs Decoherence Time (Budget fixed): DR', x_label='Decoherence Time')
+    x_positions = np.arange(len(dt_list), dtype=float)
+    plot_grouped_bars(
+        ax, results, x_positions, [str(dt) for dt in dt_list],
+        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # 'dt1' / 'dt2' ...
+    )
+    place_legend_inside(ax)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, '5_proactive_decoherence_var.png'))
+    plt.close(fig)
+    print("\n[SUCCESS] Fig.5 saved and data exported.")
+
+
+# ===================== MAIN =====================
+if __name__ == "__main__":
+    timestamp = datetime.now().strftime("run_%Y%m%d_%H%M%S")
+    output_directory = os.path.join('simulation_plots', timestamp)
+    os.makedirs(output_directory, exist_ok=True)
+    print(f"Created output directory: {output_directory}")
+
+    excel_filepath = os.path.join(output_directory, f"simulation_results_{timestamp}.xlsx")
+
+    print("Pre-generating user sets for consistency...")
+    random.seed(RANDOM_SEED)
+
+    # For Fig.1, Fig.2, Fig.5 (same 5x5, 3 users)
+    # 1) 用真实拓扑的节点集合初始化 RequestGenerator
+    all_nodes = nodes_from_edge_list(EDGE_LIST)
+    rg = RequestGenerator(all_nodes)
+
+    # 2) 同一真实拓扑 + 固定用户数 NUM_USERS_PROTOCOLS_1
+    user_sets_1_2_5 = [rg.random_users(k=NUM_USERS_PROTOCOLS_1)
+                       for _ in range(NUM_TRIALS)]
+
+    # For Fig.3 (per network size, 3 users)
+
+    # For Fig.4 (per num_users on 3x3)
+    base_user_sets_4 = {}
+    for n in NUM_USERS_LIST_4:
+        base_user_sets_4[f'{n}_users'] = [rg.random_users(k=n)
+                                          for _ in range(NUM_TRIALS)]
+
+    print("User set generation complete.")
+
+    with pd.ExcelWriter(excel_filepath, engine='openpyxl') as writer:
+        # 占位页，避免异常时没有可见 sheet
+        pd.DataFrame([{"status": "initializing"}]).to_excel(writer, sheet_name="README", index=False)
+
+        export_run_parameters(writer)
+        #
+        # plot_protocols_vs_budget(writer, output_directory, user_sets_1_2_5)                  # Fig.1
+        # plot_mpp_op_var(writer, output_directory, user_sets_1_2_5)                           # Fig.2
+        # plot_mpp_scalability_network_size_var(writer, output_directory, base_user_sets_3)    # Fig.3
+        # plot_mpp_scalability_users_var(writer, output_directory, base_user_sets_4)           # Fig.4
+        plot_mpp_decoherence_var(writer, output_directory, user_sets_1_2_5)                  # Fig.5
+
+    print("\n\n" + "*" * 50)
+    print("********** ALL SIMULATIONS COMPLETE   **********")
+    print(f"All plot images and data saved in '{output_directory}'.")
+    print("*" * 50)

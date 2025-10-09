@@ -11,18 +11,72 @@ import numpy as np
 RANDOM_SEED = 1
 NUM_TRIALS = 100
 MAX_TIMEESLOT_PER_TRIAL = 100
-DECOHERENCE_TIME = 2
-MAX_PER_EDGE = 8
-EDGE_LENGTH_KM = 1
 
-COST_BUDGETS = list(range(24, 59, 4))
+DECOHERENCE_TIME = 1
+MAX_PER_EDGE = 8
+EDGE_LENGTH_KM = 10
+
+COST_BUDGETS = list(range(20, 50, 3))
+
+LENGTH_NETWORK_PROTOCOLS_1 = 5
+WIDTH_NETWORK_PROTOCOLS_1 = 5
+NUM_USERS_PROTOCOLS_1 = 3
+OP_PROTOCOLS_1 = 0.8
+
+LENGTH_NETWORK_OP_2 = 5
+WIDTH_NETWORK_OP_2 = 5
+NUM_USERS_OP_2 = 3
+
+NUM_USERS_NET_SIZE_3 = 3
+OP_NET_SIZE_3 = 0.8
+
+LENGTH_NETWORK_USER_4 = 3
+WIDTH_NETWORK_USER_4 = 3
+OP_USER_4 = 0.8
+
+LENGTH_NETWORK_DT_5 = 5
+WIDTH_NETWORK_DT_5 = 5
+NUM_USERS_DT_5 = 3
+OP_DT_5 = 0.8
+
+def export_run_parameters(writer):
+    """Write key run parameters into a dedicated Excel sheet."""
+    rows = [
+        ("RANDOM_SEED", RANDOM_SEED),
+        ("NUM_TRIALS", NUM_TRIALS),
+        ("MAX_TIMEESLOT_PER_TRIAL", MAX_TIMEESLOT_PER_TRIAL),
+        ("DECOHERENCE_TIME",DECOHERENCE_TIME),
+        ("MAX_PER_EDGE",MAX_PER_EDGE),
+        ("EDGE_LENGTH_KM",EDGE_LENGTH_KM),
+        ("COST_BUDGETS", COST_BUDGETS),
+
+        # Fig.1 基础参数
+        ("LENGTH_NETWORK_PROTOCOLS_1", LENGTH_NETWORK_PROTOCOLS_1, "Fig.1"),
+        ("WIDTH_NETWORK_PROTOCOLS_1",  WIDTH_NETWORK_PROTOCOLS_1,  "Fig.1"),
+        ("NUM_USERS_PROTOCOLS_1",      NUM_USERS_PROTOCOLS_1,      "Fig.1"),
+        ("OP_PROTOCOLS_1",             OP_PROTOCOLS_1,             "Fig.1"),
+        # Fig.2
+        ("LENGTH_NETWORK_OP_2",        LENGTH_NETWORK_OP_2,        "Fig.2"),
+        ("WIDTH_NETWORK_OP_2",         WIDTH_NETWORK_OP_2,         "Fig.2"),
+        ("NUM_USERS_OP_2",             NUM_USERS_OP_2,             "Fig.2"),
+        # Fig.3
+        ("NUM_USERS_NET_SIZE_3",       NUM_USERS_NET_SIZE_3,       "Fig.3"),
+        ("OP_NET_SIZE_3",              OP_NET_SIZE_3,              "Fig.3"),
+        # Fig.4
+        ("LENGTH_NETWORK_USER_4",      LENGTH_NETWORK_USER_4,      "Fig.4"),
+        ("WIDTH_NETWORK_USER_4",       WIDTH_NETWORK_USER_4,       "Fig.4"),
+        ("OP_USER_4",                  OP_USER_4,                  "Fig.4"),
+        # Fig.5
+        ("LENGTH_NETWORK_DT_5",        LENGTH_NETWORK_DT_5,        "Fig.5"),
+        ("WIDTH_NETWORK_DT_5",         WIDTH_NETWORK_DT_5,         "Fig.5"),
+        ("NUM_USERS_DT_5",             NUM_USERS_DT_5,             "Fig.5"),
+        ("OP_DT_5",                    OP_DT_5,                    "Fig.5"),
+    ]
+    df = pd.DataFrame(rows, columns=["Parameter", "Value", "Used In"])
+    df.to_excel(writer, sheet_name="Run_Params", index=False)
 
 
 def run_and_get_metrics(params, user_sets_list):
-    """
-    Helper function to run a simulation and return a tuple of metrics.
-    NOW ACCEPTS a list of user sets.
-    """
     simulator = EventSimulator(
         length_network=params['length_network'],
         width_network=params['width_network'],
@@ -35,7 +89,6 @@ def run_and_get_metrics(params, user_sets_list):
     )
 
     dr_object = EntanglementDistribution()
-
     random.seed(RANDOM_SEED)
 
     deployed_dicts_per_trial = simulator.run_trials(
@@ -86,6 +139,26 @@ def create_dr_plot(title, x_label='Quantum Source Budget'):
     return fig, ax
 
 
+def line_style_for(method: str) -> str:
+    return '-' if method == 'steiner_tree' else '--'
+
+
+def bar_style_kwargs(method: str, color):
+    if method == 'steiner_tree':
+        return dict(color=color, alpha=0.7)
+    else:
+        return dict(facecolor='none', edgecolor=color, hatch='//', linewidth=1.5)
+
+
+def place_legend_inside(ax, loc='upper left'):
+    return ax.legend(
+        loc=loc,
+        bbox_to_anchor=(0.02, 0.98),  # 轴内偏移（左上角附近）
+        borderaxespad=0.4, frameon=True, framealpha=0.9,
+        prop={'size': 16}
+    )
+
+
 def _plot_dr(ax, results_dict, cost_budgets, group_key_fn):
     """
     仅绘制 DR 的柱状图。
@@ -126,28 +199,6 @@ def _plot_dr(ax, results_dict, cost_budgets, group_key_fn):
     ax.set_xticklabels(cost_budgets)
 
 
-def place_legend_inside(ax, loc='upper left'):
-    return ax.legend(
-        loc=loc,
-        bbox_to_anchor=(0.02, 0.98),  # 轴内偏移（左上角附近）
-        borderaxespad=0.4,
-        frameon=True,
-        framealpha=0.9,
-        prop={'size': 16}
-    )
-
-
-def line_style_for(method: str) -> str:
-    return '-' if method == 'steiner_tree' else '--'
-
-
-def bar_style_kwargs(method: str, color):
-    if method == 'steiner_tree':
-        return dict(color=color, alpha=0.7)
-    else:
-        return dict(facecolor='none', edgecolor=color, hatch='//', linewidth=1.5)
-
-
 def _plot_combo(ax1, ax2, results_dict, cost_budgets, group_key_fn):
     """
     results_dict: {label: {'ce_actual': [...], 'dr': [...]}}
@@ -177,7 +228,6 @@ def _plot_combo(ax1, ax2, results_dict, cost_budgets, group_key_fn):
         # 同色：按组 key 选颜色
         color = plt.cm.get_cmap('tab10')(group_to_color_idx[group_key_fn(label)] % 10)
 
-        # 折线（CE）：同色，steiner=实线，all=虚线
         ax1.plot(
             base_x, data['ce_actual'],
             marker='o', linestyle=line_style_for(method), color=color, markersize=5,
@@ -211,8 +261,9 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
                 label = f'{protocol}-{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 3, 'width_network': 3, 'num_users': 3,
-                    'p_op': 0.8, 'routing_method': protocol,
+                    'length_network': LENGTH_NETWORK_PROTOCOLS_1, 'width_network': WIDTH_NETWORK_PROTOCOLS_1,
+                    'num_users': NUM_USERS_PROTOCOLS_1,
+                    'p_op': OP_PROTOCOLS_1, 'routing_method': protocol,
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -233,22 +284,11 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Protocols_vs_Budget', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('Protocols vs. Quantum Source Budget: CE and DR')
-    # _plot_combo(
-    #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('_', 1)[0]
-    # )
-    # handles1, labels1 = ax1.get_legend_handles_labels()
-    # handles2, labels2 = ax2.get_legend_handles_labels()
-    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
     fig, ax = create_dr_plot('Protocols vs. Quantum Source Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
-    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
-    # fig.tight_layout(rect=[0, 0, 0.85, 1])
 
     place_legend_inside(ax, loc='upper left')
     fig.tight_layout()
@@ -276,7 +316,8 @@ def plot_mpp_op_vs_budget(excel_writer, output_dir, user_sets_list):
                 label = f'p_op{p_op}-{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 3, 'width_network': 3, 'num_users': 3,
+                    'length_network': LENGTH_NETWORK_OP_2, 'width_network': WIDTH_NETWORK_OP_2,
+                    'num_users': NUM_USERS_OP_2,
                     'p_op': p_op, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
@@ -298,24 +339,11 @@ def plot_mpp_op_vs_budget(excel_writer, output_dir, user_sets_list):
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Proactive Routing Operation Probability', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('MPP Operation Probability vs. Budget: CE and DR')
-    # # 同色条件：按“p_op”分组
-    # _plot_combo(
-    #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # p0.7 / p0.8 / p0.9
-    # )
-    #
-    # handles1, labels1 = ax1.get_legend_handles_labels()
-    # handles2, labels2 = ax2.get_legend_handles_labels()
-    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
     fig, ax = create_dr_plot('Proactive Routing Operation Probability vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
-    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
-    # fig.tight_layout(rect=[0, 0, 0.85, 1])
 
     place_legend_inside(ax, loc='upper left')
     fig.tight_layout()
@@ -344,8 +372,8 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
                 label = f'{size[0]}x{size[1]}-{method}'
                 print(f"\n--- Running: {size[0]}x{size[1]} ({method}), Budget={budget} ---")
                 params = {
-                    'length_network': size[0], 'width_network': size[1], 'num_users': 3,
-                    'p_op': 0.8, 'routing_method': 'Proactive Routing',
+                    'length_network': size[0], 'width_network': size[1], 'num_users': NUM_USERS_NET_SIZE_3,
+                    'p_op': OP_NET_SIZE_3, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -366,23 +394,12 @@ def plot_mpp_scalability_network_size_vs_budget(excel_writer, output_dir, base_u
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Proactive Routing_Scalability_Network', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('Proactive Routing Scalability (Network Size) vs. Budget: CE and DR')
-    # # 同色条件：按“网络尺寸”分组
-    # _plot_combo(
-    #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # 3x3 / 4x4 / 5x5
-    # )
-    # handles1, labels1 = ax1.get_legend_handles_labels()
-    # handles2, labels2 = ax2.get_legend_handles_labels()
-    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
     fig, ax = create_dr_plot('Proactive Routing Scalability (Network Size) vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
-    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
-    # fig.tight_layout(rect=[0, 0, 0.85, 1])
+
     place_legend_inside(ax, loc='upper left')
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '3_mpp_scalability_network_vs_budget.png'))
@@ -410,8 +427,8 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
                 label = f'{num_users}users-{method}'
                 print(f"\n--- Running: {num_users} Users ({method}), Budget={budget} ---")
                 params = {
-                    'length_network': 3, 'width_network': 3, 'num_users': num_users,
-                    'p_op': 0.8, 'routing_method': 'Proactive Routing',
+                    'length_network': LENGTH_NETWORK_USER_4, 'width_network': WIDTH_NETWORK_USER_4, 'num_users': num_users,
+                    'p_op': OP_USER_4, 'routing_method': 'Proactive Routing',
                     'source_method': method, 'cost_budget': budget
                 }
                 summary_data = run_and_get_metrics(params, user_sets_list)
@@ -431,24 +448,11 @@ def plot_mpp_scalability_users_vs_budget(excel_writer, output_dir, base_user_set
     df = pd.DataFrame(all_plot_data)
     df.to_excel(excel_writer, sheet_name='Proactive Routing_Scalability_Users', index=False)
 
-    # fig, ax1, ax2 = create_combo_plot('Proactive Routing Scalability (Number of Users) vs. Budget: CE and DR')
-    # # 同色条件：按“用户数”分组
-    # _plot_combo(
-    #     ax1, ax2, results, cost_budgets,
-    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # 3users / 4users / 5users
-    # )
-    #
-    # handles1, labels1 = ax1.get_legend_handles_labels()
-    # handles2, labels2 = ax2.get_legend_handles_labels()
-    # ax1.legend(handles1 + handles2, labels1 + labels2, bbox_to_anchor=(1.15, 1), loc='upper left')
-
     fig, ax = create_dr_plot('Proactive Routing Scalability (Number of Users) vs. Budget: DR')
     _plot_dr(
         ax, results, cost_budgets,
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
-    # ax.legend(bbox_to_anchor=(1.15, 1), loc='upper left')
-    # fig.tight_layout(rect=[0, 0, 0.85, 1])
     place_legend_inside(ax, loc='upper left')
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, '4_mpp_scalability_users_vs_budget.png'))
@@ -475,8 +479,9 @@ def plot_mpp_decoherence_vs_budget(excel_writer, output_dir, user_sets_list):
                 label = f'dt{dt}-{method}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
-                    'length_network': 3, 'width_network': 3, 'num_users': 3,
-                    'p_op': 0.6,  # Fixed p_op
+                    'length_network': LENGTH_NETWORK_DT_5, 'width_network': WIDTH_NETWORK_DT_5,
+                    'num_users': NUM_USERS_DT_5,
+                    'p_op': OP_DT_5,
                     'routing_method': 'Proactive Routing',
                     'source_method': method,
                     'cost_budget': budget,
@@ -508,7 +513,7 @@ def plot_mpp_decoherence_vs_budget(excel_writer, output_dir, user_sets_list):
 
     place_legend_inside(ax, loc='upper left')
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'mpp_decoherence_vs_budget.png'))
+    fig.savefig(os.path.join(output_dir, '5_mpp_decoherence_vs_budget.png'))
     plt.close(fig)
     print("\n[SUCCESS] Plot 5 on Decoherence Time saved and data exported to Excel.")
 
@@ -524,19 +529,18 @@ if __name__ == "__main__":
     print("Pre-generating user sets for consistency...")
     random.seed(RANDOM_SEED)
 
-    # User sets for Plot 1 and 2 (5x5 network, 4 users)
-    sim_for_users_p1_p2 = EventSimulator(3, 3, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, num_users=3)
-    user_sets_p1_p2 = [sim_for_users_p1_p2.user_gen.random_users(k=3) for _ in range(NUM_TRIALS)]
+    sim_for_users_p1_p2_p5 = EventSimulator(LENGTH_NETWORK_PROTOCOLS_1, WIDTH_NETWORK_PROTOCOLS_1, EDGE_LENGTH_KM,
+                                            MAX_PER_EDGE, OP_PROTOCOLS_1, DECOHERENCE_TIME, NUM_USERS_PROTOCOLS_1)
+    user_sets_p1_p2_p5 = [sim_for_users_p1_p2_p5.user_gen.random_users(NUM_USERS_PROTOCOLS_1) for _ in range(NUM_TRIALS)]
 
-    # User sets for Plot 3 (varying network size, 3 users)
     base_user_sets_p3 = {}
     for size in [(3, 3), (4, 4), (5, 5)]:
-        sim = EventSimulator(size[0], size[1], EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, num_users=3)
-        base_user_sets_p3[f'{size[0]}x{size[1]}'] = [sim.user_gen.random_users(k=3) for _ in range(NUM_TRIALS)]
+        sim = EventSimulator(size[0], size[1], EDGE_LENGTH_KM, MAX_PER_EDGE, OP_NET_SIZE_3, DECOHERENCE_TIME, NUM_USERS_NET_SIZE_3)
+        base_user_sets_p3[f'{size[0]}x{size[1]}'] = [sim.user_gen.random_users(NUM_USERS_NET_SIZE_3) for _ in range(NUM_TRIALS)]
 
-    # User sets for Plot 4 (5x5 network, varying users)
     base_user_sets_p4 = {}
-    sim_for_p4 = EventSimulator(3, 3, EDGE_LENGTH_KM, MAX_PER_EDGE, 0.8, DECOHERENCE_TIME, 5)  # Max users
+    sim_for_p4 = EventSimulator(LENGTH_NETWORK_USER_4, WIDTH_NETWORK_USER_4, EDGE_LENGTH_KM, MAX_PER_EDGE, OP_USER_4,
+                                DECOHERENCE_TIME, num_users=5)  # Max users
     for num_users in [3, 4, 5]:
         base_user_sets_p4[f'{num_users}_users'] = [sim_for_p4.user_gen.random_users(k=num_users) for _ in range(NUM_TRIALS)]
 
@@ -545,10 +549,11 @@ if __name__ == "__main__":
     with pd.ExcelWriter(excel_filepath, engine='openpyxl') as writer:
         pd.DataFrame([{"status": "initializing"}]).to_excel(writer, sheet_name="README", index=False)
 
-        plot_protocols_vs_budget(writer, output_directory, user_sets_p1_p2)
-        plot_mpp_op_vs_budget(writer, output_directory, user_sets_p1_p2)
-        plot_mpp_decoherence_vs_budget(writer, output_directory, user_sets_p1_p2)
+        export_run_parameters(writer)
 
+        plot_protocols_vs_budget(writer, output_directory, user_sets_p1_p2_p5)
+        plot_mpp_op_vs_budget(writer, output_directory, user_sets_p1_p2_p5)
+        plot_mpp_decoherence_vs_budget(writer, output_directory, user_sets_p1_p2_p5)
 
         # plot_mpp_scalability_network_size_vs_budget(writer, output_directory, base_user_sets_p3)
         # plot_mpp_scalability_users_vs_budget(writer, output_directory, base_user_sets_p4)

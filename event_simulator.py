@@ -8,22 +8,23 @@ from entanglement_swapping import EntanglementSwapping
 from entanglement_fusion import EntanglementFusion
 from entanglement_distribution import EntanglementDistribution
 from quantum_source_placement import SourcePlacement
+from quantum_source_placement_dp import SourcePlacementDP
 from entanglement_link import EntanglementLink
 from collections import Counter
 
 
 class EventSimulator:
-    # def __init__(self, edge_list, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
-    def __init__(self, length_network, width_network, edge_length_km, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
+    def __init__(self, edge_list, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
+    # def __init__(self, length_network, width_network, edge_length_km, max_per_edge, p_op, decoherence_time, num_users=3, max_timeslot=500):
         self.p_op = p_op
         self.num_users = num_users
         self.max_timeslot = max_timeslot
         self.max_per_edge = max_per_edge
-        # self.network = QuantumNetwork(edge_list=edge_list, max_per_edge=self.max_per_edge,
-        #                               decoherence_time=decoherence_time)
-        self.network = QuantumNetwork(length_network=length_network, width_network=width_network,
-                                      edge_length_km=edge_length_km,
-                                      max_per_edge=self.max_per_edge, decoherence_time=decoherence_time)
+        self.network = QuantumNetwork(edge_list=edge_list, max_per_edge=self.max_per_edge,
+                                      decoherence_time=decoherence_time)
+        # self.network = QuantumNetwork(length_network=length_network, width_network=width_network,
+        #                               edge_length_km=edge_length_km,
+        #                               max_per_edge=self.max_per_edge, decoherence_time=decoherence_time)
         self.link_manager = self.network.entanglementlink_manager
         self.topo = self.network.topo
         self.user_gen = RequestGenerator(self.topo.get_nodes())
@@ -187,13 +188,29 @@ class EventSimulator:
             print(f"[user_set] {user_set}")
 
             self.network.reset()
+            if source_method == "NOP":
+                source = SourcePlacement(self.topo)
+                sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,
+                                                           max_per_edge=self.max_per_edge)
+                cost = source.compute_cost()
 
-            source = SourcePlacement(self.topo)
-            sources = source.place_sources_for_request(user_set, method=source_method, cost_budget=cost_budget,
-                                                       max_per_edge=self.max_per_edge)
+            if source_method == "OP":
+                placer = SourcePlacementDP(self.topo)
+                sources, dbg = placer.place_sources_for_request(
+                    user_set=user_set,
+                    cost_budget=cost_budget,  # total cost in "pairs" if pair_cost==1
+                    pair_cost=1,  # cost per pair
+                    max_per_edge=self.max_per_edge,  # per-edge cap
+                    K_steiner=3, k_paths=2, weight_attr='length',
+                    w_topo=0.25, w_demand=0.35, w_quality=0.4, w_overlap=0.0,
+                    p_map=None,  # or provide per-edge success prob: {(u,v): p_e, ...}
+                    p_op=self.p_op,
+                    value_model='prob'  # 'prob' (diminishing) or 'linear'
+                )
+                cost = placer.compute_cost()
+
             source_edge_list = [tuple(sorted(edge)) for edge in sources]
             deployed_dict = dict(Counter(source_edge_list))
-            cost = source.compute_cost()
 
             all_deployed_dicts.append(deployed_dict)
 
@@ -216,13 +233,13 @@ class EventSimulator:
 
             num_ghz = 1  # Default for SP, MPG, MPC
 
-            if routing_method == 'Reactive Routing':
+            if routing_method == 'RR':
                 time_to_success, num_ghz = self.run_single_trial_SP(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPG':
                 time_to_success = self.run_single_trial_MPG(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPC':
                 time_to_success = self.run_single_trial_MPC(user_set, self.p_op, deployed_dict)
-            elif routing_method == 'Proactive Routing':
+            elif routing_method == 'PR':
                 time_to_success, num_ghz = self.run_single_trial_MPP(user_set, self.p_op, deployed_dict)
             else:
                 raise ValueError(f"Unknown routing_method: {routing_method}")
@@ -246,20 +263,20 @@ if __name__ == "__main__":
         6 —— 7 —— 8
     """
 
-    # m = 5
-    # length = 10
-    # edge_list = []
-    # for row in range(m):
-    #     for col in range(m):
-    #         node = row * m + col
-    #         # Right neighbor
-    #         if col < m - 1:
-    #             right = node + 1
-    #             edge_list.append((node, right, length))
-    #         # Bottom neighbor
-    #         if row < m - 1:
-    #             down = node + m
-    #             edge_list.append((node, down, length))
+    m = 5
+    length = 10
+    edge_list = []
+    for row in range(m):
+        for col in range(m):
+            node = row * m + col
+            # Right neighbor
+            if col < m - 1:
+                right = node + 1
+                edge_list.append((node, right, length))
+            # Bottom neighbor
+            if row < m - 1:
+                down = node + m
+                edge_list.append((node, down, length))
 
     LENGTH_NETWORK = 3
     WIDTH_NETWORK = 3
@@ -277,12 +294,12 @@ if __name__ == "__main__":
     SOURCE_METHOD = "steiner_tree"
     COST_BUDGET = 18
 
-    # simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
-    #                            decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)
-
-    simulator = EventSimulator(length_network=LENGTH_NETWORK, width_network=WIDTH_NETWORK, edge_length_km=EDGE_LENGTH_KM,
-                               num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
+    simulator = EventSimulator(edge_list, num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
                                decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)
+    #
+    # simulator = EventSimulator(length_network=LENGTH_NETWORK, width_network=WIDTH_NETWORK, edge_length_km=EDGE_LENGTH_KM,
+    #                            num_users=NUM_USERS, p_op=P_OP, max_per_edge=MAX_PER_EDGE,
+    #                            decoherence_time=DECOHERENCE_TIME, max_timeslot=MAX_TIMEESLOT_PER_TRIAL)
 
     dr_sp = EntanglementDistribution()
     dr_mpg = EntanglementDistribution()

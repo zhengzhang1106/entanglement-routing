@@ -11,17 +11,17 @@ import matplotlib.pyplot as plt
 
 
 class Topology:
-    # def __init__(self, edge_list):
-    #     self.graph = nx.Graph()
-    #     for u, v, length_km in edge_list:
-    #         self.graph.add_node(u)
-    #         self.graph.add_node(v)
-    #         self.graph.add_edge(u, v, length=length_km)
-
-    def __init__(self, x, y, length_km):
-        self.graph = nx.grid_2d_graph(x, y)
-        for (u, v) in self.graph.edges():
-            self.graph.edges[u, v]['length'] = length_km
+    def __init__(self, edge_list):
+        self.graph = nx.Graph()
+        for u, v, length_km in edge_list:
+            self.graph.add_node(u)
+            self.graph.add_node(v)
+            self.graph.add_edge(u, v, length=length_km)
+    #
+    # def __init__(self, x, y, length_km):
+    #     self.graph = nx.grid_2d_graph(x, y)
+    #     for (u, v) in self.graph.edges():
+    #         self.graph.edges[u, v]['length'] = length_km
 
     def show_topology(self):
         print("Show the current topology:")

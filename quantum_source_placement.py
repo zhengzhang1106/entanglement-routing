@@ -1,16 +1,15 @@
 import networkx as nx
 from steiner_tree_algorithms import approximate_steiner_tree
 
+pair_cost = 1
 
 class SourcePlacement:
     def __init__(self, topo):
         self.topo = topo
         self.sources = []
 
-    def place_sources_for_request(self, user_set, method="steiner_tree", cost_budget=None, max_per_edge=1):
+    def place_sources_for_request(self, user_set, method="OP", cost_budget=None, max_per_edge=1):
         """
-        Place quantum sources on edges according to the selected method.
-
         Args:
             user_set (list): User terminal nodes.
             method (str): 'steiner_tree' or 'all_edges'.
@@ -22,10 +21,10 @@ class SourcePlacement:
                   Each tuple represents one source pair.
         """
         # 1) Select base edges
-        if method == "steiner_tree":
+        if method == "OP":
             subgraph = approximate_steiner_tree(self.topo.graph, user_set)
             base_edges = list(subgraph.edges())
-        elif method == "all_edges":
+        elif method == "NOP":
             base_edges = list(self.topo.get_edges())
         else:
             raise ValueError(f"Unknown source placement method: {method}")
@@ -54,10 +53,10 @@ class SourcePlacement:
         # 3) With budget
         if cost_budget < 0:
             raise ValueError("cost_budget must be non-negative")
-        if cost_budget % 2 != 0:
+        if cost_budget % pair_cost != 0:
             print(f"[SourcePlacement][WARN] cost_budget={cost_budget} is not even, "
                   f"using {cost_budget - 1} instead.")
-        budget_pairs = cost_budget // 2
+        budget_pairs = cost_budget // pair_cost
 
         capacity_pairs = len(base_keys) * max_per_edge
         target_pairs = min(budget_pairs, capacity_pairs)
@@ -84,7 +83,7 @@ class SourcePlacement:
         return self.sources
 
     def compute_cost(self):
-        return len(self.sources) * 2
+        return len(self.sources) * pair_cost
 
 
 if __name__ == "__main__":
