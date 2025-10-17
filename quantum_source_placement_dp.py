@@ -8,7 +8,9 @@ Source placement via:
 import random
 import networkx as nx
 from collections import defaultdict
-from steiner_tree_algorithms import approximate_steiner_tree
+from steiner_tree_algorithms import approximate_steiner_tree, gen_multi_steiner_trees
+
+PAIR_COST = 1
 
 
 def _normalize_edge_tuple(e):
@@ -51,12 +53,11 @@ class SourcePlacementDP:
         """
         u, v = e
         data = self.topo.graph.get_edge_data(u, v, default={})
-        # common attribute names: 'length' or 'weight'
-        if 'length' in data:
-            return float(data['length'])
+        if 'length_km' in data:
+            return float(data['length_km'])
         return float(default_len)
 
-    def _generate_diverse_steiner_trees(self, user_set, K=5, lambda_overlap=0.8, weight_attr='length'):
+    def _generate_diverse_steiner_trees(self, user_set, K=5, lambda_overlap=0.8, weight_attr='length_km'):
         """
         Generate K 'diverse' Steiner trees by inflating the weight of edges
         that were already used in previous trees (overlap penalty).
@@ -70,7 +71,7 @@ class SourcePlacementDP:
         for u, v in G.edges():
             if weight_attr not in G[u][v]:
                 # fallback on existing length/weight, else unit
-                L = G[u][v].get('length', G[u][v].get('weight', 1.0))
+                L = G[u][v].get('length_km', G[u][v].get('weight', 1.0))
                 G[u][v][weight_attr] = float(L)
 
         used_count = defaultdict(int)
@@ -102,7 +103,7 @@ class SourcePlacementDP:
 
         return trees
 
-    def _userpair_k_shortest_paths(self, user_set, k_paths=2, weight_attr='length'):
+    def _userpair_k_shortest_paths(self, user_set, k_paths=2, weight_attr='length_km'):
         """
         For each unordered user pair, collect up to k shortest simple paths (by length_attr),
         and return the union set of edges on those paths.
@@ -112,12 +113,6 @@ class SourcePlacementDP:
         """
         G = self.topo.graph
         edge_set = set()
-        # build edge weight getter
-        def length_of(u, v):
-            data = G.get_edge_data(u, v, {})
-            if weight_attr in data:
-                return float(data[weight_attr])
-            return float(data.get('length', data.get('weight', 1.0)))
 
         users = list(user_set)
         for i in range(len(users)):
@@ -139,7 +134,7 @@ class SourcePlacementDP:
         return edge_set
 
     def build_candidate_edges(self, user_set, K_steiner=5, k_paths=2,
-                              weight_attr='length', union_strategy='union'):
+                              weight_attr='length_km', union_strategy='union'):
         """
         Create candidate edge set as union (or intersection) of:
           - K diverse Steiner trees
@@ -151,10 +146,11 @@ class SourcePlacementDP:
         """
         trees = self._generate_diverse_steiner_trees(user_set, K=K_steiner,
                                                      lambda_overlap=0.8, weight_attr=weight_attr)
+        steiner_union = set().union(*trees) if trees else set()
+
         path_edges = self._userpair_k_shortest_paths(user_set, k_paths=k_paths,
                                                      weight_attr=weight_attr)
 
-        steiner_union = set().union(*trees) if trees else set()
         if union_strategy == 'intersection':
             # rare: only edges that appear in both sets
             cand = steiner_union.intersection(path_edges)
@@ -205,7 +201,7 @@ class SourcePlacementDP:
                 s, t = users[i], users[j]
                 # all shortest paths by length attribute (fall back to unweighted)
                 try:
-                    paths = list(nx.all_shortest_paths(G, s, t, weight='length'))
+                    paths = list(nx.all_shortest_paths(G, s, t, weight='length_km'))
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
                     continue
                 if not paths:
@@ -363,8 +359,8 @@ class SourcePlacementDP:
     # High-level API
     # -----------------------------
     def place_sources_for_request(self, user_set,
-                                  cost_budget=12, pair_cost=1, max_per_edge=3,
-                                  K_steiner=5, k_paths=2, weight_attr='length',
+                                  cost_budget=12, max_per_edge=3,
+                                  K_steiner=5, k_paths=2, weight_attr='length_km',
                                   w_topo=0.25, w_demand=0.35, w_quality=0.35, w_overlap=0.0,
                                   p_map=None, p_op=0.9, value_model='prob'):
         """
@@ -402,7 +398,7 @@ class SourcePlacementDP:
         # Step 3: grouped DP optimization
         alloc, total_pairs, dp_value = self.optimize_grouped_dp(
             cand_edges, score=scores, p_map=p_map, p_op=p_op,
-            cost_budget=cost_budget, pair_cost=pair_cost,
+            cost_budget=cost_budget, pair_cost=PAIR_COST,
             max_per_edge=max_per_edge, value_model=value_model
         )
 
@@ -424,7 +420,7 @@ class SourcePlacementDP:
         return self.sources, debug
 
     def compute_cost(self):
-        return len(self.sources) * 2
+        return len(self.sources) * PAIR_COST
 
 
 if __name__ == "__main__":
@@ -440,8 +436,8 @@ if __name__ == "__main__":
     """
     edge_list = [
         (0, 1, 10), (0, 3, 10), (1, 2, 10), (1, 4, 10),
-        (2, 5, 20), (3, 4, 10), (3, 6, 20), (4, 7, 10),
-        (5, 8, 10), (6, 7, 30), (7, 8, 10)
+        (2, 5, 10), (3, 4, 10), (3, 6, 10), (4, 7, 10),
+        (5, 8, 10), (6, 7, 10), (7, 8, 10)
     ]
 
     topo = Topology(edge_list)
@@ -451,12 +447,11 @@ if __name__ == "__main__":
     sources, dbg = placer.place_sources_for_request(
         user_set=users,
         cost_budget=12,      # total cost in "pairs" if pair_cost==1
-        pair_cost=1,         # cost per pair
-        max_per_edge=3,      # per-edge cap
-        K_steiner=3, k_paths=2, weight_attr='length',
+        max_per_edge=5,      # per-edge cap
+        K_steiner=3, k_paths=2, weight_attr='length_km',
         w_topo=0.25, w_demand=0.35, w_quality=0.4, w_overlap=0.0,
         p_map=None,          # or provide per-edge success prob: {(u,v): p_e, ...}
-        p_op=0.9,
+        p_op=0.8,
         value_model='prob'   # 'prob' (diminishing) or 'linear'
     )
 

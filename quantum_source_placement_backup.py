@@ -1,47 +1,39 @@
 import math
 import random
 import networkx as nx
-from collections import defaultdict
-from steiner_tree_algorithms import approximate_steiner_tree
+from collections import Counter, defaultdict
+from steiner_tree_algorithms import approximate_steiner_tree, gen_multi_steiner_trees
 
-# ===== 全局成本：每对 source 的代价 =====
-PAIR_COST = 2  # 需要改成本时，在此修改即可
+PAIR_COST = 1
 
 
-class SourcePlacement:
+class SourcePlacementBackup:
     """
-    SRP-MT: Source-Redundant Provisioning over Multiple Trees
-    - 多棵候选 Steiner 树的并集上，基于全局预算进行冗余部署（离散贪心）
-    - 目标近似：最大化 sum_k w_k * sum_{e in T_k} log(1 - (1 - p_e)^{x_e})
-    - 约束：sum_e x_e <= B, 0 <= x_e <= max_per_edge, （可选）节点内存
+    MT-OVERLAP: 两阶段启发式
+      - 阶段A：给基线树(base tree)的每条边各放 1 对（弱边优先）
+      - 阶段B：按与 base 的重叠度从高到低选择候选树，
+               先在重叠边再在非重叠边上，用对数边际增益贪心加对
+    成功率：p_e = p_op * (1 - (1 - 10^{-(loss*L)/10}))，q_e(x) = 1 - (1 - p_e)^x
     """
 
     def __init__(self, topo):
         self.topo = topo
-        self.sources = []  # list of (u, v) for each placed pair
+        self.sources = []  # list[(u,v)]: 每个元素代表一对 source
 
+    # ===== 外部接口 =====
     def place_sources_for_request(
         self,
         user_set,
-        method="OP",
+        method="mt_overlap",
         cost_budget=None,
         max_per_edge=1,
-        # --- SRP-MT 参数 ---
         k_trees=5,
-        tree_weights=None,
-        # --- 物理参数（用于 p_e 计算）---
-        p_op=1.0,                    # 单次操作成功率
-        loss_coef_dB_per_km=0.2,     # 衰减系数（dB/km）
-        seed=1,
-        node_memory=None
+        p_op=1.0,
+        loss_coef_dB_per_km=0.2,
+        seed=1
     ):
-        """
-        Returns:
-            list[(u,v)]: 每个元组是一对 source 的部署位置（同一边会重复出现）
-        """
         random.seed(seed)
 
-        # 兼容原基线方法
         if method in ("OP", "steiner_tree"):
             return self._baseline_round_robin(user_set, base="steiner",
                                               cost_budget=cost_budget, max_per_edge=max_per_edge)
@@ -49,102 +41,189 @@ class SourcePlacement:
             return self._baseline_round_robin(user_set, base="all",
                                               cost_budget=cost_budget, max_per_edge=max_per_edge)
 
-        if method.lower() != "srp_mt":
-            raise ValueError(f"Unknown source placement method: {method}")
+        if method.lower() != "mt_overlap":
+            raise ValueError(f"Unknown method: {method}")
 
-        # === SRP-MT ===
+        # ==== MT-OVERLAP ====
         if cost_budget is None or cost_budget < 0:
-            raise ValueError("[SRP-MT] cost_budget 必须给定且非负")
-        if cost_budget % 1 != 0:
-            print(f"[SRP-MT][WARN] cost_budget={cost_budget} 不是整数对，按 {int(cost_budget)} 使用")
-        budget_pairs = int(cost_budget)
+            raise ValueError("[MT-OVERLAP] cost_budget 必须给定且非负")
+        budget_pairs = int(cost_budget/PAIR_COST)
 
-        # 1) 生成候选树
-        trees = self._gen_multi_steiner_trees(user_set, k_trees=k_trees, seed=seed)
+        # S0. 候选树
+        # trees = gen_multi_steiner_trees(self.topo.graph, user_set, k_trees=k_trees)
+        trees = self._generate_diverse_steiner_trees(user_set, K=k_trees,
+                                                     lambda_overlap=0.8, weight_attr='length_km')
+
         if not trees:
             self.sources = []
-            print("[SRP-MT] 未生成候选树，停止。")
+            print("[MT-OVERLAP] 未生成候选树")
             return self.sources
 
-        # 2) 计算每条边的 p_e（用给定物理公式）
-        p_e = self._get_edge_success_prob(p_op=p_op, loss_coef_dB_per_km=loss_coef_dB_per_km)
+        edge_sets = [set(self._norm_edge(e) for e in T.edges()) for T in trees]
+        # E_union = sorted(set().union(*edge_sets))
 
-        # 3) 多树边并集 & 权重
-        E_union = sorted({self._norm_edge(e) for T in trees for e in T.edges()})
+        path_edges = self._userpair_k_shortest_paths(user_set, k_paths=2)
+        E_union = sorted(set().union(*edge_sets).union(path_edges))
+
         if not E_union:
             self.sources = []
-            print("[SRP-MT] 候选树无边。")
+            print("[MT-OVERLAP] 候选树无边")
             return self.sources
+        p_e = self._get_edge_success_prob(p_op=p_op, loss_coef_dB_per_km=loss_coef_dB_per_km)
 
-        if tree_weights is None:
-            tree_weights = [1.0] * len(trees)
-        assert len(tree_weights) == len(trees), "tree_weights 长度需与 k_trees 一致"
+        # S1. 选 base：用“每边 1 对”时的 Π_k^(1) 最大
+        def q1(e):  # q_e(1)
+            p = p_e.get(e, 0.0)
+            return 1.0 - (1.0 - p) ** 1
 
-        # 4) 贪心渐进取整
-        x = {e: 0 for e in E_union}
-        used = 0
+        Pi1 = []
+        for Ek in edge_sets:
+            val = 1.0
+            for e in Ek:
+                val *= max(1e-15, q1(e))
+            Pi1.append(val)
+        base_idx = max(range(len(trees)), key=lambda i: Pi1[i])
+        E_base = edge_sets[base_idx]
+        print(f"Tree_base: {E_base}")
 
-        mem_left = None
-        if node_memory is not None:
-            mem_left = dict(node_memory)
+        # 统计重叠频次
+        freq = Counter()
+        for Ek in edge_sets:
+            for e in Ek:
+                freq[e] += 1
+        print(f"freq: {freq}")
 
-        # Δ_e(x) = sum_k w_k [ log(1-(1-p_e)^{x+1}) - log(1-(1-p_e)^{x}) ]，若 e∉T_k 则该项为0
-        def delta_mt(edge, x_e):
+        # 对数边际增益（+1 对）
+        def log_gain_one(edge, x_e):
             p = p_e.get(edge, 0.0)
             if p <= 0.0:
                 return -1e18
-            base = (1 - p) ** x_e
-            nxt = (1 - p) ** (x_e + 1)
+            base = (1.0 - p) ** x_e
+            nxt = (1.0 - p) ** (x_e + 1)
             if base >= 1.0:
                 return -1e18
-            gain_single = math.log(1 - nxt) - math.log(1 - base)
+            return math.log(1.0 - nxt) - math.log(1.0 - base)
 
-            g = 0.0
-            edge_sets = self._tree_edge_sets_cache(trees)
-            for wk, Ek in zip(tree_weights, edge_sets):
-                if edge in Ek:
-                    g += wk * gain_single
-            return g
+        # 可行性检查
+        def feasible_plus1(e, x):
+            if x[e] >= max_per_edge:
+                return False
+            return True
 
-        # 预缓存每棵树的边集（加速）
-        _ = self._tree_edge_sets_cache(trees)
+        # 初始化
+        x = {e: 0 for e in E_union}
+        used = 0
 
-        while used < budget_pairs:
-            best_edge, best_gain = None, -1e18
-            for e in E_union:
-                if x[e] >= max_per_edge:
-                    continue
-                if not self._node_feasible_after_plus1(e, x, mem_left):
-                    continue
-                g = delta_mt(e, x[e])
-                if g > best_gain:
-                    best_gain, best_edge = g, e
-
-            if best_edge is None:
+        # S2. 阶段A：给 base tree 每边 1 对（弱边先补）
+        base_edges_sorted = sorted(E_base, key=lambda e: p_e.get(e, 0.0))  # p 小先补
+        for e in base_edges_sorted:
+            if used >= budget_pairs:
                 break
+            if feasible_plus1(e, x):
+                x[e] += 1
+                used += 1
 
-            x[best_edge] += 1
+        # S3. 阶段B：按与 base 的重叠度从高到低择树，再部署
+        # overlap_k = |E_k ∩ E_base| / |E_k|
+        overlap_order = sorted(
+            [i for i in range(len(trees)) if i != base_idx],
+            key=lambda i: (len(edge_sets[i] & E_base) / max(1, len(edge_sets[i]))),
+            reverse=True
+        )
+
+        def greedy_fill_on_edges(edge_pool):
+            nonlocal used, x
+            if used >= budget_pairs:
+                return
+            # 两层候选：先重叠边，再非重叠边；同层内按 log 增益降序
+            edges_in_base = [e for e in edge_pool if e in E_base]
+            edges_not_inbase = [e for e in edge_pool if e not in E_base]
+
+            while used < budget_pairs:
+                # 每一小步都重算最优边（更稳）
+                cand_in = sorted(
+                    (e for e in edges_in_base if feasible_plus1(e, x)),
+                    key=lambda e: (log_gain_one(e, x[e]), freq[e]), reverse=True
+                )
+                if cand_in:
+                    best = cand_in[0]
+                else:
+                    cand_out = sorted(
+                        (e for e in edges_not_inbase if feasible_plus1(e, x)),
+                        key=lambda e: (log_gain_one(e, x[e]), freq[e]), reverse=True
+                    )
+                    if not cand_out:
+                        break
+                    best = cand_out[0]
+
+                x[best] += 1
+                used += 1
+
+        for i in overlap_order:
+            if used >= budget_pairs:
+                break
+            greedy_fill_on_edges(list(edge_sets[i]))
+
+        # 扫尾：若还有预算，在并集边上全局优先级 (in_base, freq, gain)
+        while used < budget_pairs:
+            candidates = [e for e in E_union if feasible_plus1(e, x)]
+            if not candidates:
+                break
+            best = max(
+                candidates,
+                key=lambda e: (1 if e in E_base else 0, freq[e], log_gain_one(e, x[e]))
+            )
+            x[best] += 1
             used += 1
-            if mem_left is not None:
-                u, v = best_edge
-                mem_left[u] -= 1
-                mem_left[v] -= 1
 
-        # 5) 展开 sources
+        # 展开 sources
         self.sources = []
         for e, cnt in x.items():
             self.sources.extend([e] * cnt)
 
-        capacity_pairs = len(E_union) * max_per_edge
-        print(f"[SRP-MT] trees={len(trees)}, union_edges={len(E_union)}")
-        print(f"[SRP-MT] placed_pairs={used}, budget_pairs={budget_pairs}, capacity_pairs={capacity_pairs}")
-        print(f"[SRP-MT] max_per_edge={max_per_edge}, node_memory={'ON' if node_memory else 'OFF'}")
+        print(f"[SRP-MT-OVERLAP] base_idx={base_idx}, placed_pairs={used}, "
+              f"budget_pairs={budget_pairs}, union_edges={len(E_union)}")
         print(f"[SourcePlacement] Total cost: {self.compute_cost()} (PAIR_COST={PAIR_COST})")
         return self.sources
 
-    # ===== 基线方法（保持原 OP/NOP 逻辑，预算与成本改用 PAIR_COST） =====
+    def _userpair_k_shortest_paths(self, user_set, k_paths=2, weight_attr='length_km'):
+        """
+        For each unordered user pair, collect up to k shortest simple paths (by length_attr),
+        and return the union set of edges on those paths.
+
+        Returns:
+            edge_set: set of undirected edge keys (u,v)
+        """
+        G = self.topo.graph
+        edge_set = set()
+        # build edge weight getter
+        def length_of(u, v):
+            data = G.get_edge_data(u, v, {})
+            if weight_attr in data:
+                return float(data[weight_attr])
+            return float(data.get('length_km', data.get('weight', 1.0)))
+
+        users = list(user_set)
+        for i in range(len(users)):
+            for j in range(i + 1, len(users)):
+                s, t = users[i], users[j]
+                # k shortest simple paths by length
+                try:
+                    gen = nx.shortest_simple_paths(G, s, t, weight=weight_attr)
+                except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    continue
+                c = 0
+                for path in gen:
+                    # add path edges
+                    for a, b in zip(path, path[1:]):
+                        edge_set.add(self._norm_edge((a, b)))
+                    c += 1
+                    if c >= k_paths:
+                        break
+        return edge_set
+
+    # ===== baseline（OP / NOP） =====
     def _baseline_round_robin(self, user_set, base="steiner", cost_budget=None, max_per_edge=1):
-        # 1) 选基线边集
         if base == "steiner":
             subgraph = approximate_steiner_tree(self.topo.graph, user_set)
             base_edges = list(subgraph.edges())
@@ -160,7 +239,6 @@ class SourcePlacement:
         self.sources = []
         per_edge_count = {k: 0 for k in base_keys}
 
-        # 2) 无预算：每边放 1（不超过上限）
         if cost_budget is None:
             for (u, v) in base_keys:
                 if per_edge_count[(u, v)] < max_per_edge:
@@ -173,14 +251,11 @@ class SourcePlacement:
 
         if cost_budget < 0:
             raise ValueError("cost_budget must be non-negative")
-        if cost_budget % 1 != 0:
-            print(f"[SourcePlacement][WARN] cost_budget={cost_budget} 非整数对, 使用 {int(cost_budget)}。")
         budget_pairs = int(cost_budget)
 
         capacity_pairs = len(base_keys) * max_per_edge
         target_pairs = min(budget_pairs, capacity_pairs)
 
-        # 4) 轮转分配
         placed = 0
         idx = 0
         n = len(base_keys)
@@ -192,18 +267,15 @@ class SourcePlacement:
                 placed += 1
             idx += 1
             if idx >= n and all(per_edge_count[k] >= max_per_edge for k in base_keys):
-                break  # capacity exhausted
+                break
 
-        # 5) 输出
         print(f"[SourcePlacement] Method: {base}, Sources placed: {self.sources}")
         print(f"[SourcePlacement] Total cost: {self.compute_cost()} (target_pairs={target_pairs})")
         print(f"[SourcePlacement] Cost budget (pairs): {cost_budget}, max_per_edge={max_per_edge}, "
               f"capacity_pairs={capacity_pairs}, used_pairs={placed}")
         return self.sources
 
-    # ===== 工具 =====
     def compute_cost(self):
-        # 使用全局 PAIR_COST，不再写死 2
         return len(self.sources) * PAIR_COST
 
     @staticmethod
@@ -213,76 +285,83 @@ class SourcePlacement:
 
     def _get_edge_success_prob(self, p_op, loss_coef_dB_per_km):
         """
-        使用给定物理模型：
-            p_loss = 1 - 10^(-(loss_coef_dB_per_km * L)/10)
-            p_e = p_op * (1 - p_loss)
-        其中 L 优先取边属性 'length_km'；若无则用 'weight'；再无则默认 1.0 km。
+        p_loss = 1 - 10^{-(loss_coef * L)/10}
+        p_e    = p_op * (1 - p_loss)
         """
         pe = {}
         G = self.topo.graph
         for (u, v, data) in G.edges(data=True):
             key = self._norm_edge((u, v))
-            L = float(data.get("length_km", data.get("weight", 1.0)))
+            # L = float(data.get("length_km", data.get("weight", 1.0)))
+            L = float(data.get("length_km"))
             p_loss = 1.0 - (10.0 ** (-(loss_coef_dB_per_km * L) / 10.0))
             p = p_op * (1.0 - p_loss)
-            # 数值截断
             pe[key] = max(0.0, min(1.0, p))
         return pe
 
-    def _node_feasible_after_plus1(self, e, x, mem_left):
-        if mem_left is None:
-            return True
-        u, v = e
-        return (mem_left.get(u, 1 << 30) >= 1) and (mem_left.get(v, 1 << 30) >= 1)
-
-    # 缓存每棵树的“规范化边集”，用于快速增益计算
-    def _tree_edge_sets_cache(self, trees):
-        if not hasattr(self, "_edge_sets_cache"):
-            self._edge_sets_cache = [set(self._norm_edge(e) for e in T.edges()) for T in trees]
-        return self._edge_sets_cache
-
-    def _gen_multi_steiner_trees(self, user_set, k_trees=5, seed=1):
+    def _generate_diverse_steiner_trees(self, user_set, K=5, lambda_overlap=0.8, weight_attr='length_km'):
         """
-        通过对边权做轻微扰动生成 k 棵多样化的 Steiner 树
+        Generate K 'diverse' Steiner trees by inflating the weight of edges
+        that were already used in previous trees (overlap penalty).
+        Also add a tiny random jitter to diversify.
+
+        Returns:
+            trees: list of sets of undirected edge keys (u,v) per Steiner tree
         """
-        rng = random.Random(seed)
+
+        def _normalize_edge_tuple(e):
+            """Return undirected edge key as a sorted 2-tuple (u, v)."""
+            u, v = e[:2]
+            return (u, v) if u < v else (v, u)
+
+        G = self.topo.graph.copy()
+        # ensure each edge has a base weight
+        for u, v in G.edges():
+            if weight_attr not in G[u][v]:
+                # fallback on existing length/weight, else unit
+                L = G[u][v].get('length_km', G[u][v].get('weight', 1.0))
+                G[u][v][weight_attr] = float(L)
+
+        used_count = defaultdict(int)
         trees = []
-        G_orig = self.topo.graph
-
-        for _ in range(k_trees):
-            G = nx.Graph()
-            for u, v, data in G_orig.edges(data=True):
-                w = float(data.get("weight", 1.0))
-                jitter = 1.0 + rng.uniform(-0.05, 0.05)
-                G.add_edge(u, v, weight=w * jitter, length_km=data.get("length_km", w * jitter))
+        for k in range(K):
+            # build modified weights with overlap penalty + tiny jitter
+            for u, v in G.edges():
+                base_w = float(G[u][v][weight_attr])
+                pen = 1.0 + lambda_overlap * used_count[_normalize_edge_tuple((u, v))]
+                jitter = 1.0 + 0.02 * random.random()  # small randomness
+                G[u][v]['_tmp_w'] = base_w * pen * jitter
             try:
-                T = approximate_steiner_tree(G, user_set)
-                if len(T.edges()) > 0:
-                    trees.append(self._to_undirected_simple(T))
+                T = approximate_steiner_tree(G, user_set)  # NOTE: your function should accept weight param if needed
+                # If your approximate_steiner_tree accepts weight kw, pass weight='_tmp_w'.
+                # e.g., T = approximate_steiner_tree(G, user_set, weight='_tmp_w')
+
+                if T.number_of_edges() > 0:
+                    # 复制一份，避免后续外部修改
+                    H = nx.Graph()
+                    H.add_nodes_from(T.nodes(data=True))
+                    H.add_edges_from(T.edges(data=True))
+                    trees.append(H)
+
+                    # clean temp weights if needed
+                    for u, v in G.edges():
+                        if '_tmp_w' in G[u][v]:
+                            del G[u][v]['_tmp_w']
+
             except Exception:
                 continue
 
-        # 去重
+        # 去重（按无向规范化边集）
         uniq = {}
         for T in trees:
-            key = tuple(sorted({self._norm_edge(e) for e in T.edges()}))
+            key = frozenset(_normalize_edge_tuple(e) for e in T.edges())
             uniq[key] = T
-        # 清掉旧缓存
-        if hasattr(self, "_edge_sets_cache"):
-            delattr(self, "_edge_sets_cache")
-        return list(uniq.values())
 
-    @staticmethod
-    def _to_undirected_simple(G):
-        H = nx.Graph()
-        H.add_nodes_from(G.nodes())
-        H.add_edges_from(G.edges(data=True))
-        return H
+        return list(uniq.values())
 
 
 if __name__ == "__main__":
     from network_topology import Topology
-
     """
        0 —— 1 —— 2
        |    |    |
@@ -306,18 +385,370 @@ if __name__ == "__main__":
     topo = Topology(edge_list)
     users = [0, 2, 7]
 
-    print("\n" + "=" * 50 + " SRP-MT " + "=" * 50 + "\n")
-    sp = SourcePlacement(topo)
+    sp = SourcePlacementBackup(topo)
     placed = sp.place_sources_for_request(
         users,
-        method="srp_mt",
-        cost_budget=10,           # 以“对”为单位；总cost=PAIR_COST*10
+        method="mt_overlap",
+        cost_budget=20,
         max_per_edge=3,
-        k_trees=6,
-        p_op=0.9,                 # 例：单次操作成功率
-        loss_coef_dB_per_km=0.2,  # 例：0.2 dB/km
-        seed=42,
-        node_memory=None
+        k_trees=3,
+        p_op=0.9,
+        loss_coef_dB_per_km=0.2,
+        seed=2
     )
-    print("SRP-MT placed:", placed)
-    print("Total cost:", sp.compute_cost(), "(PAIR_COST =", PAIR_COST, ")")
+    print("Placed pairs:", placed)
+
+
+# import math
+# import random
+# import networkx as nx
+# from collections import Counter
+# from steiner_tree_algorithms import approximate_steiner_tree
+#
+# # ===== 全局：每对 source 的成本（你项目里统一改这里） =====
+# PAIR_COST = 1
+#
+#
+# class SourcePlacementBackup:
+#     """
+#     SRP-MT-OVERLAP: 两阶段启发式
+#       - 阶段A：给基线树(base tree)的每条边各放 1 对（弱边优先）
+#       - 阶段B：按与 base 的重叠度从高到低选择候选树，
+#                先在重叠边再在非重叠边上，用对数边际增益贪心加对
+#     约束：全局预算、每边上限、（可选）节点内存
+#     成功率：p_e = p_op * (1 - (1 - 10^{-(loss*L)/10}))，q_e(x) = 1 - (1 - p_e)^x
+#     """
+#
+#     def __init__(self, topo):
+#         self.topo = topo
+#         self.sources = []  # list[(u,v)]: 每个元素代表一对 source
+#
+#     # ===== 外部接口 =====
+#     def place_sources_for_request(
+#         self,
+#         user_set,
+#         method="mt_overlap",   # 仅保留该方法；也支持 OP/NOP 作为基线
+#         cost_budget=None,          # 预算（按“对”计）
+#         max_per_edge=1,
+#         k_trees=5,
+#         p_op=1.0,
+#         loss_coef_dB_per_km=0.2,
+#         seed=1,
+#         node_memory=None           # 可选: {node: cap}
+#     ):
+#         random.seed(seed)
+#
+#         # 基线方法兼容（可选：保留以便对比）
+#         if method in ("OP", "steiner_tree"):
+#             return self._baseline_round_robin(user_set, base="steiner",
+#                                               cost_budget=cost_budget, max_per_edge=max_per_edge)
+#         if method in ("NOP", "all_edges"):
+#             return self._baseline_round_robin(user_set, base="all",
+#                                               cost_budget=cost_budget, max_per_edge=max_per_edge)
+#
+#         if method.lower() != "mt_overlap":
+#             raise ValueError(f"Unknown method: {method}")
+#
+#         # ==== SRP-MT-OVERLAP 主流程 ====
+#         if cost_budget is None or cost_budget < 0:
+#             raise ValueError("[SRP-MT-OVERLAP] cost_budget 必须给定且非负")
+#         budget_pairs = int(cost_budget)
+#
+#         # S0. 候选树
+#         trees = self._gen_multi_steiner_trees(user_set, k_trees=k_trees, seed=seed)
+#         if not trees:
+#             self.sources = []
+#             print("[SRP-MT-OVERLAP] 未生成候选树。")
+#             return self.sources
+#
+#         edge_sets = [set(self._norm_edge(e) for e in T.edges()) for T in trees]
+#         E_union = sorted(set().union(*edge_sets))
+#         if not E_union:
+#             self.sources = []
+#             print("[SRP-MT-OVERLAP] 候选树无边。")
+#             return self.sources
+#
+#         # p_e by physical model
+#         p_e = self._get_edge_success_prob(p_op=p_op, loss_coef_dB_per_km=loss_coef_dB_per_km)
+#
+#         # S1. 选 base：用“每边 1 对”时的 Π_k^(1) 最大
+#         def q1(e):  # q_e(1)
+#             p = p_e.get(e, 0.0)
+#             return 1.0 - (1.0 - p) ** 1
+#         Pi1 = []
+#         for Ek in edge_sets:
+#             val = 1.0
+#             for e in Ek:
+#                 val *= max(1e-15, q1(e))
+#             Pi1.append(val)
+#         base_idx = max(range(len(trees)), key=lambda i: Pi1[i])
+#         E_base = edge_sets[base_idx]
+#
+#         # 统计重叠频次
+#         freq = Counter()
+#         for Ek in edge_sets:
+#             for e in Ek:
+#                 freq[e] += 1
+#
+#         # 对数边际增益（+1 对）
+#         def log_gain_one(edge, x_e):
+#             p = p_e.get(edge, 0.0)
+#             if p <= 0.0:
+#                 return -1e18
+#             base = (1.0 - p) ** x_e
+#             nxt = (1.0 - p) ** (x_e + 1)
+#             if base >= 1.0:
+#                 return -1e18
+#             return math.log(1.0 - nxt) - math.log(1.0 - base)
+#
+#         # 可行性检查
+#         def feasible_plus1(e, x, mem_left):
+#             if x[e] >= max_per_edge:
+#                 return False
+#             if mem_left is None:
+#                 return True
+#             u, v = e
+#             return (mem_left.get(u, 1 << 30) >= 1) and (mem_left.get(v, 1 << 30) >= 1)
+#
+#         # 初始化
+#         x = {e: 0 for e in E_union}
+#         used = 0
+#         mem_left = dict(node_memory) if node_memory is not None else None
+#
+#         # S2. 阶段A：给 base tree 每边 1 对（弱边先补）
+#         base_edges_sorted = sorted(E_base, key=lambda e: p_e.get(e, 0.0))  # p 小先补
+#         for e in base_edges_sorted:
+#             if used >= budget_pairs:
+#                 break
+#             if feasible_plus1(e, x, mem_left):
+#                 x[e] += 1
+#                 used += 1
+#                 if mem_left is not None:
+#                     u, v = e
+#                     mem_left[u] -= 1
+#                     mem_left[v] -= 1
+#
+#         # S3. 阶段B：按与 base 的重叠度从高到低择树，再部署
+#         # overlap_k = |E_k ∩ E_base| / |E_k|
+#         overlap_order = sorted(
+#             [i for i in range(len(trees)) if i != base_idx],
+#             key=lambda i: (len(edge_sets[i] & E_base) / max(1, len(edge_sets[i]))),
+#             reverse=True
+#         )
+#
+#         def greedy_fill_on_edges(edge_pool):
+#             nonlocal used, x, mem_left
+#             if used >= budget_pairs:
+#                 return
+#             # 两层候选：先重叠边，再非重叠边；同层内按 log 增益降序
+#             edges_in_base = [e for e in edge_pool if e in E_base]
+#             edges_not_inbase = [e for e in edge_pool if e not in E_base]
+#
+#             while used < budget_pairs:
+#                 # 每一小步都重算最优边（更稳）
+#                 cand_in = sorted(
+#                     (e for e in edges_in_base if feasible_plus1(e, x, mem_left)),
+#                     key=lambda e: (log_gain_one(e, x[e]), freq[e]), reverse=True
+#                 )
+#                 if cand_in:
+#                     best = cand_in[0]
+#                 else:
+#                     cand_out = sorted(
+#                         (e for e in edges_not_inbase if feasible_plus1(e, x, mem_left)),
+#                         key=lambda e: (log_gain_one(e, x[e]), freq[e]), reverse=True
+#                     )
+#                     if not cand_out:
+#                         break
+#                     best = cand_out[0]
+#
+#                 x[best] += 1
+#                 used += 1
+#                 if mem_left is not None:
+#                     u, v = best
+#                     mem_left[u] -= 1
+#                     mem_left[v] -= 1
+#
+#         for i in overlap_order:
+#             if used >= budget_pairs:
+#                 break
+#             greedy_fill_on_edges(list(edge_sets[i]))
+#
+#         # 扫尾：若还有预算，在并集边上全局优先级 (in_base, freq, gain)
+#         while used < budget_pairs:
+#             candidates = [e for e in E_union if feasible_plus1(e, x, mem_left)]
+#             if not candidates:
+#                 break
+#             best = max(
+#                 candidates,
+#                 key=lambda e: (1 if e in E_base else 0, freq[e], log_gain_one(e, x[e]))
+#             )
+#             x[best] += 1
+#             used += 1
+#             if mem_left is not None:
+#                 u, v = best
+#                 mem_left[u] -= 1
+#                 mem_left[v] -= 1
+#
+#         # 展开 sources
+#         self.sources = []
+#         for e, cnt in x.items():
+#             self.sources.extend([e] * cnt)
+#
+#         print(f"[SRP-MT-OVERLAP] base_idx={base_idx}, placed_pairs={used}, "
+#               f"budget_pairs={budget_pairs}, union_edges={len(E_union)}")
+#         print(f"[SourcePlacement] Total cost: {self.compute_cost()} (PAIR_COST={PAIR_COST})")
+#         return self.sources
+#
+#     # ===== 基线（OP / NOP）保留以便对比 =====
+#     def _baseline_round_robin(self, user_set, base="steiner", cost_budget=None, max_per_edge=1):
+#         if base == "steiner":
+#             subgraph = approximate_steiner_tree(self.topo.graph, user_set)
+#             base_edges = list(subgraph.edges())
+#         else:
+#             base_edges = list(self.topo.get_edges())
+#
+#         base_keys = sorted({self._norm_edge(e) for e in base_edges})
+#         if not base_keys:
+#             self.sources = []
+#             print("[SourcePlacement] No candidate edges found.")
+#             return self.sources
+#
+#         self.sources = []
+#         per_edge_count = {k: 0 for k in base_keys}
+#
+#         if cost_budget is None:
+#             for (u, v) in base_keys:
+#                 if per_edge_count[(u, v)] < max_per_edge:
+#                     self.sources.append((u, v))
+#                     per_edge_count[(u, v)] += 1
+#             print(f"[SourcePlacement] Method: {base}, Sources placed: {self.sources}")
+#             print(f"[SourcePlacement] Total cost: {self.compute_cost()}")
+#             print("[SourcePlacement] Cost budget: None")
+#             return self.sources
+#
+#         if cost_budget < 0:
+#             raise ValueError("cost_budget must be non-negative")
+#         budget_pairs = int(cost_budget)
+#
+#         capacity_pairs = len(base_keys) * max_per_edge
+#         target_pairs = min(budget_pairs, capacity_pairs)
+#
+#         placed = 0
+#         idx = 0
+#         n = len(base_keys)
+#         while placed < target_pairs:
+#             u, v = base_keys[idx % n]
+#             if per_edge_count[(u, v)] < max_per_edge:
+#                 self.sources.append((u, v))
+#                 per_edge_count[(u, v)] += 1
+#                 placed += 1
+#             idx += 1
+#             if idx >= n and all(per_edge_count[k] >= max_per_edge for k in base_keys):
+#                 break
+#
+#         print(f"[SourcePlacement] Method: {base}, Sources placed: {self.sources}")
+#         print(f"[SourcePlacement] Total cost: {self.compute_cost()} (target_pairs={target_pairs})")
+#         print(f"[SourcePlacement] Cost budget (pairs): {cost_budget}, max_per_edge={max_per_edge}, "
+#               f"capacity_pairs={capacity_pairs}, used_pairs={placed}")
+#         return self.sources
+#
+#     # ===== 工具 =====
+#     def compute_cost(self):
+#         return len(self.sources) * PAIR_COST
+#
+#     @staticmethod
+#     def _norm_edge(e):
+#         u, v = e[:2]
+#         return (u, v) if u < v else (v, u)
+#
+#     def _get_edge_success_prob(self, p_op, loss_coef_dB_per_km):
+#         """
+#         p_loss = 1 - 10^{-(loss_coef * L)/10}
+#         p_e    = p_op * (1 - p_loss)
+#         L 优先取 'length_km'；无则取 'weight'；再无则 1.0
+#         """
+#         pe = {}
+#         G = self.topo.graph
+#         for (u, v, data) in G.edges(data=True):
+#             key = self._norm_edge((u, v))
+#             L = float(data.get("length_km", data.get("weight", 1.0)))
+#             p_loss = 1.0 - (10.0 ** (-(loss_coef_dB_per_km * L) / 10.0))
+#             p = p_op * (1.0 - p_loss)
+#             pe[key] = max(0.0, min(1.0, p))
+#         return pe
+#
+#     def _gen_multi_steiner_trees(self, user_set, k_trees=5, seed=1):
+#         """
+#         对边权做 ±5% 抖动生成多棵候选树；去重
+#         """
+#         rng = random.Random(seed)
+#         trees = []
+#         G_orig = self.topo.graph
+#
+#         for _ in range(k_trees):
+#             G = nx.Graph()
+#             for u, v, data in G_orig.edges(data=True):
+#                 w = float(data.get("weight", 1.0))
+#                 jitter = 1.0 + rng.uniform(-0.05, 0.05)
+#                 # 保持 length_km 存在（若原无 length_km，用 weight 做近似）
+#                 G.add_edge(u, v, weight=w * jitter,
+#                            length_km=data.get("length_km", w))
+#             try:
+#                 T = approximate_steiner_tree(G, user_set)
+#                 if T.number_of_edges() > 0:
+#                     H = nx.Graph()
+#                     H.add_nodes_from(T.nodes())
+#                     H.add_edges_from(T.edges(data=True))
+#                     trees.append(H)
+#             except Exception:
+#                 continue
+#
+#         # 去重（按无向规范化边集）
+#         uniq = {}
+#         for T in trees:
+#             key = tuple(sorted({self._norm_edge(e) for e in T.edges()}))
+#             uniq[key] = T
+#         return list(uniq.values())
+#
+#
+# # ===== 示例 =====
+# if __name__ == "__main__":
+#     from network_topology import Topology
+#
+#     """
+#        0 —— 1 —— 2
+#        |    |    |
+#        3 —— 4 —— 5
+#        |    |    |
+#        6 —— 7 —— 8
+#     """
+#     edge_list = [
+#         (0, 1, 10),
+#         (0, 3, 10),
+#         (1, 2, 10),
+#         (1, 4, 10),
+#         (2, 5, 10),
+#         (3, 4, 10),
+#         (3, 6, 10),
+#         (4, 7, 10),
+#         (5, 8, 10),
+#         (6, 7, 10),
+#         (7, 8, 10)
+#     ]
+#     topo = Topology(edge_list)
+#     users = [0, 2, 7]
+#
+#     sp = SourcePlacement(topo)
+#     placed = sp.place_sources_for_request(
+#         users,
+#         method="srp_mt_overlap",
+#         cost_budget=10,         # 10 对；总 cost = 10 * PAIR_COST
+#         max_per_edge=3,
+#         k_trees=6,
+#         p_op=0.9,
+#         loss_coef_dB_per_km=0.2,
+#         seed=42,
+#         node_memory=None
+#     )
+#     print("Placed pairs:", placed)
+#     print("Total cost:", sp.compute_cost(), "(PAIR_COST =", PAIR_COST, ")")

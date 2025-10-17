@@ -9,6 +9,7 @@ from entanglement_fusion import EntanglementFusion
 from entanglement_distribution import EntanglementDistribution
 from quantum_source_placement import SourcePlacement
 from quantum_source_placement_dp import SourcePlacementDP
+from quantum_source_placement_backup import SourcePlacementBackup
 from entanglement_link import EntanglementLink
 from collections import Counter
 
@@ -194,20 +195,34 @@ class EventSimulator:
                                                            max_per_edge=self.max_per_edge)
                 cost = source.compute_cost()
 
-            if source_method == "OP":
+            elif source_method == "OP":
                 placer = SourcePlacementDP(self.topo)
                 sources, dbg = placer.place_sources_for_request(
                     user_set=user_set,
                     cost_budget=cost_budget,  # total cost in "pairs" if pair_cost==1
-                    pair_cost=1,  # cost per pair
                     max_per_edge=self.max_per_edge,  # per-edge cap
-                    K_steiner=3, k_paths=2, weight_attr='length',
+                    K_steiner=4, k_paths=2, weight_attr='length_km',
                     w_topo=0.25, w_demand=0.35, w_quality=0.4, w_overlap=0.0,
                     p_map=None,  # or provide per-edge success prob: {(u,v): p_e, ...}
                     p_op=self.p_op,
                     value_model='prob'  # 'prob' (diminishing) or 'linear'
                 )
                 cost = placer.compute_cost()
+            elif source_method == "OP_BP":
+                sp_backup = SourcePlacementBackup(self.topo)
+                sources = sp_backup.place_sources_for_request(
+                    user_set=user_set,
+                    method="mt_overlap",
+                    cost_budget=cost_budget,
+                    max_per_edge=self.max_per_edge,
+                    k_trees=3,
+                    p_op=self.p_op,
+                    loss_coef_dB_per_km=0.2,
+                    seed=2,
+                )
+                cost = sp_backup.compute_cost()
+            else:
+                raise ValueError(f"Unknown source_method: {source_method}")
 
             source_edge_list = [tuple(sorted(edge)) for edge in sources]
             deployed_dict = dict(Counter(source_edge_list))
@@ -233,13 +248,13 @@ class EventSimulator:
 
             num_ghz = 1  # Default for SP, MPG, MPC
 
-            if routing_method == 'RR':
+            if routing_method == 'SR':
                 time_to_success, num_ghz = self.run_single_trial_SP(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPG':
                 time_to_success = self.run_single_trial_MPG(user_set, self.p_op, edge_probs, deployed_dict)
             elif routing_method == 'MPC':
                 time_to_success = self.run_single_trial_MPC(user_set, self.p_op, deployed_dict)
-            elif routing_method == 'PR':
+            elif routing_method == 'DR':
                 time_to_success, num_ghz = self.run_single_trial_MPP(user_set, self.p_op, deployed_dict)
             else:
                 raise ValueError(f"Unknown routing_method: {routing_method}")

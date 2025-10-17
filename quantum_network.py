@@ -64,8 +64,8 @@ if __name__ == "__main__":
         ("C", "D", 20)
     ]
 
-    # net = QuantumNetwork(edge_list=edge_list, max_per_edge=4, decoherence_time=6)
-    net = QuantumNetwork(length_network=3, width_network=3, edge_length_km=1, max_per_edge=4, decoherence_time=6)
+    net = QuantumNetwork(edge_list=edge_list, max_per_edge=4, decoherence_time=6)
+    # net = QuantumNetwork(length_network=3, width_network=3, edge_length_km=1, max_per_edge=4, decoherence_time=6)
     net.attempt_entanglement("A", "B", p_op=0.9, gen_time=0)
     net.attempt_entanglement("B", "C", p_op=0.9, gen_time=4)
     net.show_network_status(current_time=5)

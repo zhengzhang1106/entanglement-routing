@@ -11,11 +11,11 @@ from network_request import RequestGenerator
 
 # --- Simulation Parameters ---
 RANDOM_SEED = 1
-NUM_TRIALS = 80
+NUM_TRIALS = 500 #80
 MAX_TIMEESLOT_PER_TRIAL = 50
 
-DECOHERENCE_TIME = 1
-MAX_PER_EDGE = 8
+DECOHERENCE_TIME = 2
+MAX_PER_EDGE = 5
 EDGE_LENGTH_KM = 10
 
 
@@ -29,7 +29,8 @@ OP_PROTOCOLS_1 = 0.8
 LENGTH_NETWORK_OP_2 = 5
 WIDTH_NETWORK_OP_2 = 5
 NUM_USERS_OP_2 = 3
-P_OP_LIST_2 = [0.6, 0.7, 0.8, 0.9]
+# P_OP_LIST_2 = [0.5, 0.6, 0.7, 0.8, 0.9]
+P_OP_LIST_2 = np.arange(0.0, 1.0, 0.1)
 
 # Fig.3（横轴是 Network Size）
 NET_SIZES_3 = [(3, 3), (4, 4), (5, 5)]
@@ -46,32 +47,59 @@ OP_USER_4 = 0.8
 LENGTH_NETWORK_DT_5 = 5
 WIDTH_NETWORK_DT_5 = 5
 NUM_USERS_DT_5 = 3
-OP_DT_5 = 0.6
+OP_DT_5 = 0.8
 DT_LIST_5 = [1, 2, 3, 4]
 
+
+# EDGE_LIST = [
+#                 ("Setagaya", "Ota", 12.045),
+#                 ("Setagaya", "Shinagawa", 9.072),
+#                 ("Setagaya", "Minato", 9.945),
+#                 ("Setagaya", "Shinjuku", 7.916),
+#                 ("Setagaya", "Nerima", 10.885),
+#                 ("Ota", "Shinagawa", 6.464),
+#                 ("Shinagawa", "Minato", 6.788),
+#                 ("Minato", "Koto", 7.195),
+#                 ("Minato", "Chiyoda", 4.972),
+#                 ("Shinjuku", "Minato", 6.878),
+#                 ("Shinjuku", "Chiyoda", 5.461),
+#                 ("Shinjuku", "Itabashi", 7.446),
+#                 ("Shinjuku", "Nerima", 7.504),
+#                 ("Nerima", "Itabashi", 6.341),
+#                 ("Koto", "Edogawa", 6.868),
+#                 ("Chiyoda", "Koto", 7.248),
+#                 ("Chiyoda", "Edogawa", 11.528),
+#                 ("Chiyoda", "Bunkyo", 2.601),
+#                 ("Bunkyo", "Adachi", 9.701),
+#                 ("Itabashi", "Bunkyo", 7.239),
+#                 ("Edogawa", "Adachi", 10.682)
+#             ]
+
+
 EDGE_LIST = [
-                ("Setagaya", "Ota", 12.045),
-                ("Setagaya", "Shinagawa", 9.072),
-                ("Setagaya", "Minato", 9.945),
-                ("Setagaya", "Shinjuku", 7.916),
-                ("Setagaya", "Nerima", 10.885),
-                ("Ota", "Shinagawa", 6.464),
-                ("Shinagawa", "Minato", 6.788),
-                ("Minato", "Koto", 7.195),
-                ("Minato", "Chiyoda", 4.972),
-                ("Shinjuku", "Minato", 6.878),
-                ("Shinjuku", "Chiyoda", 5.461),
-                ("Shinjuku", "Itabashi", 7.446),
-                ("Shinjuku", "Nerima", 7.504),
-                ("Nerima", "Itabashi", 6.341),
-                ("Koto", "Edogawa", 6.868),
-                ("Chiyoda", "Koto", 7.248),
-                ("Chiyoda", "Edogawa", 11.528),
-                ("Chiyoda", "Bunkyo", 2.601),
-                ("Bunkyo", "Adachi", 9.701),
-                ("Itabashi", "Bunkyo", 7.239),
-                ("Edogawa", "Adachi", 10.682)
-            ]
+    (0, 1, 10), (1, 2, 10),
+    (3, 4, 10), (4, 5, 10),
+    (6, 7, 10), (7, 8, 10),
+
+    (0, 3, 10), (1, 4, 10), (2, 5, 10),
+    (3, 6, 10), (4, 7, 10), (5, 8, 10),
+]
+
+# EDGE_LIST = [
+#     (0, 1, 10), (1, 2, 10), (2, 3, 10), (3, 4, 10), (4, 5, 10),
+#     (6, 7, 10), (7, 8, 10), (8, 9, 10), (9, 10, 10), (10, 11, 10),
+#     (12, 13, 10), (13, 14, 10), (14, 15, 10), (15, 16, 10), (16, 17, 10),
+#     (18, 19, 10), (19, 20, 10), (20, 21, 10), (21, 22, 10), (22, 23, 10),
+#     (24, 25, 10), (25, 26, 10), (26, 27, 10), (27, 28, 10), (28, 29, 10),
+#     (30, 31, 10), (31, 32, 10), (32, 33, 10), (33, 34, 10), (34, 35, 10),
+#
+#     (0, 6, 10), (6, 12, 10), (12, 18, 10), (18, 24, 10), (24, 30, 10),
+#     (1, 7, 10), (7, 13, 10), (13, 19, 10), (19, 25, 10), (25, 31, 10),
+#     (2, 8, 10), (8, 14, 10), (14, 20, 10), (20, 26, 10), (26, 32, 10),
+#     (3, 9, 10), (9, 15, 10), (15, 21, 10), (21, 27, 10), (27, 33, 10),
+#     (4, 10, 10), (10, 16, 10), (16, 22, 10), (22, 28, 10), (28, 34, 10),
+#     (5, 11, 10), (11, 17, 10), (17, 23, 10), (23, 29, 10), (29, 35, 10),
+# ]
 
 
 def nodes_from_edge_list(edge_list):
@@ -80,16 +108,15 @@ def nodes_from_edge_list(edge_list):
         nodes.add(u); nodes.add(v)
     return sorted(nodes)
 
+#
+# FIXED_BUDGET = 21
+# COST_BUDGETS = list(range(21, 40, 4))
 
-# Default fixed budget for Fig.2–Fig.5 (middle of COST_BUDGETS)
-# FIXED_BUDGET = 2 * LENGTH_NETWORK_PROTOCOLS_1 * (WIDTH_NETWORK_PROTOCOLS_1 - 1)
+FIXED_BUDGET = 12
+COST_BUDGETS = list(range(12, 32, 4))
 
-# Budgets sweep for Fig.1; others will use a fixed budget chosen from here
-# COST_BUDGETS = list(range(30, 60, 4))
-
-FIXED_BUDGET = 21
-COST_BUDGETS = list(range(16, 43, 4))
-
+# FIXED_BUDGET = 60
+# COST_BUDGETS = list(range(60, 82, 4))
 
 def export_run_parameters(writer):
     """Write key run parameters into a dedicated Excel sheet."""
@@ -173,41 +200,42 @@ def line_style_for(method: str) -> str:
 
 
 def bar_style_kwargs(method: str, color):
-    if method == 'OP':
+    if method == 'SR':
         return dict(color=color, alpha=0.75)
     else:
         return dict(facecolor='none', edgecolor=color, hatch='//', linewidth=1.5)
 
 
-def place_legend_inside(ax, loc='upper left'):
+def place_legend_inside(ax, loc='upper left', bbox_to_anchor=(0.02, 0.98)):
     return ax.legend(
         loc=loc,
-        bbox_to_anchor=(0.02, 0.98),
+        bbox_to_anchor=bbox_to_anchor,
         borderaxespad=0.4, frameon=True, framealpha=0.9,
-        prop={'size': 14}
+        prop={'size': 18}
     )
 
 
 # ---------- Generic plotting helpers ----------
-def create_dr_plot(title, x_label):
-    fig, ax = plt.subplots(figsize=(14, 8))
-    ax.set_xlabel(x_label, fontsize=18)
-    ax.set_ylabel('Distribution Rate (DR)', fontsize=18)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
-    ax.set_title(title, fontsize=20)
-    ax.tick_params(axis='both', labelsize=14)
+def create_dr_plot(title, x_label, figuresize=(11, 7)):
+    fig, ax = plt.subplots(figsize=figuresize)
+    ax.set_xlabel(x_label, fontsize=28)
+    ax.set_ylabel('Distribution Rate', fontsize=28)
+    ax.grid(True, which='both', linestyle='--', linewidth=1, axis='y')
+    # ax.set_title(title, fontsize=28)
+    ax.tick_params(axis='both', labelsize=28)
     return fig, ax
 
+
 def create_combo_plot(title, x_label):
-    fig, ax1 = plt.subplots(figsize=(14, 8))
+    fig, ax1 = plt.subplots(figsize=(11, 6))
     ax2 = ax1.twinx()
-    ax1.set_xlabel(x_label, fontsize=18)
-    ax1.set_ylabel('Cost-Efficiency (CE)', color='tab:blue', fontsize=18)
-    ax2.set_ylabel('Distribution Rate (DR)', color='tab:red', fontsize=18)
+    ax1.set_xlabel(x_label, fontsize=28)
+    ax1.set_ylabel('Cost-Efficiency (CE)', color='tab:blue', fontsize=28)
+    ax2.set_ylabel('Distribution Rate (DR)', color='tab:red', fontsize=28)
     ax1.tick_params(axis='y', labelcolor='tab:blue')
     ax2.tick_params(axis='y', labelcolor='tab:red')
     ax1.grid(True, which='both', linestyle='--', linewidth=0.5, axis='y')
-    ax1.set_title(title, fontsize=20)
+    ax1.set_title(title, fontsize=28)
     return fig, ax1, ax2
 
 
@@ -225,21 +253,113 @@ def plot_grouped_bars(ax, results_dict, x_positions, x_ticklabels, group_key_fn)
     group_to_color_idx = {g: i for i, g in enumerate(groups)}
 
     num_series = len(results_dict)
-    total_width = 0.8  # 柱群总宽度
+    total_width = 0.6  # 柱群总宽度
     bar_width = total_width / num_series
 
     for i, (label, data) in enumerate(results_dict.items()):
         try:
-            _key, method = label.split('-', 1)
+            _key, key_ = label.split('-', 1)
         except ValueError:
-            method = 'OP'
+            key_ = 'DR'
         color = plt.cm.get_cmap('tab10')(group_to_color_idx[group_key_fn(label)] % 10)
 
         x = x_positions + (i - (num_series - 1) / 2) * bar_width
-        ax.bar(x, data['dr'], width=bar_width, label=label, **bar_style_kwargs(method, color))
+        ax.bar(x, data['dr'], width=bar_width, label=label, **bar_style_kwargs(key_, color))
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_ticklabels)
+
+
+# ---------- 折线图 ----------
+def color_for_method(method: str):
+    # 让同一“Source Method”用同色，不同Protocol用不同线型
+    palette = {'NOP': 0, 'OP': 1, 'OP_BP': 2}
+    return plt.cm.get_cmap('tab10')(palette.get(method, 0) % 10)
+
+
+def linestyle_for_protocol(protocol: str):
+    # SR 实线，DR 虚线（可继续扩展 MP 等）
+    return '-' if protocol == 'SR' else '--'
+
+# --- 简单平滑工具（有 scipy 用 savgol，没有就移动平均） ---
+def _smooth_array(y, window=9, poly=3):
+    import numpy as _np
+    try:
+        from scipy.signal import savgol_filter
+        if window % 2 == 0:  # savgol 需要奇数窗口
+            window += 1
+        return savgol_filter(y, window_length=min(window, max(3, len(y)//2*2+1)), polyorder=min(poly, 3))
+    except Exception:
+        # 退化为移动平均
+        w = max(3, window | 1)  # 保证奇数
+        pad = w // 2
+        ypad = _np.r_[y[pad:0:-1], y, y[-2:-pad-2:-1]]  # 反射填充
+        ker = _np.ones(w) / w
+        sm = _np.convolve(ypad, ker, mode='valid')
+        return sm[:len(y)]
+
+
+def plot_grouped_lines(ax, results_dict, x_vals, dense_factor=10, smooth_window=9, smooth_poly=3):
+    """
+    将 results_dict 里的序列画成折线：
+      label 形如 'NOP-SR', 'OP-DR' ...
+      每条曲线使用：同 method 同色，不同 protocol 不同线型
+    """
+    # handles = []
+    # for label, data in results_dict.items():
+    #     try:
+    #         method, protocol = label.split('-', 1)
+    #     except ValueError:
+    #         method, protocol = label, 'SR'
+    #     y = data['dr']
+    #     h, = ax.plot(
+    #         x_vals, y,
+    #         linestyle=linestyle_for_protocol(protocol),
+    #         marker='o', markersize=5, linewidth=2.0,
+    #         label=label, color=color_for_method(method)
+    #     )
+    #     handles.append(h)
+
+    handles = []
+
+    # 预生成稠密的 x
+    x_vals = np.asarray(x_vals, dtype=float)
+    x_dense = np.linspace(x_vals.min(), x_vals.max(), max(len(x_vals)*dense_factor, len(x_vals)))
+
+    for label, data in results_dict.items():
+        try:
+            method, protocol = label.split('-', 1)
+        except ValueError:
+            method, protocol = label, 'SR'
+
+        y = np.asarray(data['dr'], dtype=float)
+
+        # 1) 线性插值到稠密 x
+        y_dense = np.interp(x_dense, x_vals, y)
+
+        # 2) 平滑
+        y_dense_smooth = _smooth_array(y_dense, window=smooth_window, poly=smooth_poly)
+
+        # 3) 画“平滑连线 + 原始圆点”
+        h, = ax.plot(
+            x_dense, y_dense_smooth,
+            linestyle=linestyle_for_protocol(protocol),
+            linewidth=2.0,
+            color=color_for_method(method),
+            label=label
+        )
+        ax.plot(
+            x_vals, y,
+            linestyle='None', marker='o', markersize=5,
+            color=color_for_method(method)
+        )
+        handles.append(h)
+
+    ticks = np.linspace(0.0, 1.0, 6)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([f'{t:.1f}' for t in ticks])
+
+    return handles
 
 
 # ===================== FIGURE 1 =====================
@@ -249,17 +369,18 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     print("###   GENERATING FIG.1: Protocols vs Budget   ###")
     print("#" * 60)
 
-    protocols = ['RR', 'PR']
+    protocols = ['SR', 'DR']
+    # source_methods = ["NOP", "OP_DP", "OP_BP"]
     source_methods = ["NOP", "OP"]
     cost_budgets = COST_BUDGETS
 
     all_plot_data = []
-    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{sm}-{p}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for budget in cost_budgets:
-                label = f'{protocol}-{method}'
+                label = f'{method}-{protocol}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': LENGTH_NETWORK_PROTOCOLS_1, 'width_network': WIDTH_NETWORK_PROTOCOLS_1,
@@ -282,15 +403,15 @@ def plot_protocols_vs_budget(excel_writer, output_dir, user_sets_list):
     pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig1_Protocols_vs_Budget', index=False)
 
     # 画 DR（更清晰）
-    fig, ax = create_dr_plot('Protocols vs. Quantum Source Budget: DR', x_label='Quantum Source Budget')
+    fig, ax = create_dr_plot('Protocols vs. Quantum Source Budget', x_label='Quantum Source Budget')
     x_positions = np.arange(len(cost_budgets), dtype=float)
     plot_grouped_bars(
         ax, results, x_positions, [str(b) for b in cost_budgets],
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]
     )
     place_legend_inside(ax, loc='upper left')
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, '1_protocols_vs_budget.png'))
+    fig.subplots_adjust(left=0.15)
+    fig.savefig(os.path.join(output_dir, '1_protocols_vs_budget.png'), dpi=600, bbox_inches='tight')
     plt.close(fig)
     print("\n[SUCCESS] Fig.1 saved and data exported.")
 
@@ -303,17 +424,18 @@ def plot_mpp_op_var(excel_writer, output_dir, user_sets_list):
     print("#" * 60)
 
     p_ops = P_OP_LIST_2
+    # source_methods = ["NOP", "OP", "OP_BP"]
     source_methods = ["NOP", "OP"]
-    protocols = ['RR', 'PR']
+    protocols = ['SR', 'DR']
 
     all_plot_data = []
-    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{sm}-{p}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for p_op in p_ops:
                 budget = FIXED_BUDGET
-                label = f'{protocol}-{method}'
+                label = f'{method}-{protocol}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': LENGTH_NETWORK_OP_2, 'width_network': WIDTH_NETWORK_OP_2,
@@ -336,15 +458,18 @@ def plot_mpp_op_var(excel_writer, output_dir, user_sets_list):
 
     pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig2_p_op_Var', index=False)
 
-    fig, ax = create_dr_plot('Protocols vs Operation Probability: DR', x_label='Operation Probability, p_op')
-    x_positions = np.arange(len(p_ops), dtype=float)
-    plot_grouped_bars(
-        ax, results, x_positions, [str(p) for p in p_ops],
-        group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # p_op0.6 / p_op0.7 ...
-    )
+    fig, ax = create_dr_plot('Protocols vs Operation Probability', x_label='Operation Probability')
+    # x_positions = np.arange(len(p_ops), dtype=float)
+    # plot_grouped_bars(
+    #     ax, results, x_positions, [str(p) for p in p_ops],
+    #     group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # p_op0.6 / p_op0.7 ...
+    # )
+
+    plot_grouped_lines(ax, results, p_ops)
+
     place_legend_inside(ax)
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, '2_proactive_op_var.png'))
+    fig.subplots_adjust(left=0.15)
+    fig.savefig(os.path.join(output_dir, '2_proactive_op_var.png'), dpi=600, bbox_inches='tight')
     plt.close(fig)
     print("\n[SUCCESS] Fig.2 saved and data exported.")
 
@@ -357,18 +482,19 @@ def plot_mpp_scalability_network_size_var(excel_writer, output_dir, base_user_se
     print("#" * 60)
 
     sizes = NET_SIZES_3
+    # source_methods = ["NOP", "OP", "OP_BP"]
     source_methods = ["NOP", "OP"]
-    protocols = ['RR', 'PR']
+    protocols = ['SR', 'DR']
 
     all_plot_data = []
-    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{sm}-{p}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for size in sizes:
                 user_sets_list = base_user_sets_lists[f'{size[0]}x{size[1]}']
                 budget = FIXED_BUDGET
-                label = f'{protocol}-{method}'
+                label = f'{method}-{protocol}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': size[0], 'width_network': size[1], 'num_users': NUM_USERS_NET_SIZE_3,
@@ -412,18 +538,19 @@ def plot_mpp_scalability_users_var(excel_writer, output_dir, base_user_sets_list
     print("#" * 60)
 
     num_users_list = NUM_USERS_LIST_4
+    # source_methods = ["NOP", "OP_DP", "OP_BP"]
     source_methods = ["NOP", "OP"]
-    protocols = ['RR', 'PR']
+    protocols = ['SR', 'DR']
 
     all_plot_data = []
-    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{sm}-{p}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for num_users in num_users_list:
                 user_sets_list = base_user_sets_lists[f'{num_users}_users']
                 budget = FIXED_BUDGET
-                label = f'{protocol}-{method}'
+                label = f'{method}-{protocol}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': LENGTH_NETWORK_USER_4, 'width_network': WIDTH_NETWORK_USER_4, 'num_users': num_users,
@@ -445,15 +572,15 @@ def plot_mpp_scalability_users_var(excel_writer, output_dir, base_user_sets_list
 
     pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig4_NumUsers_Var', index=False)
 
-    fig, ax = create_dr_plot('Protocols vs Number of Users: DR', x_label='Number of Users')
+    fig, ax = create_dr_plot('Protocols vs Number of Users', x_label='Number of Users', figuresize=(8, 7))
     x_positions = np.arange(len(num_users_list), dtype=float)
     plot_grouped_bars(
         ax, results, x_positions, [str(n) for n in num_users_list],
         group_key_fn=lambda lbl: lbl.split('-', 1)[0]  # '3users' / '4users' / '5users'
     )
-    place_legend_inside(ax)
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, '4_proactive_num_users_var.png'))
+    place_legend_inside(ax, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+    fig.subplots_adjust(left=0.15)
+    fig.savefig(os.path.join(output_dir, '4_proactive_num_users_var.png'), dpi=600, bbox_inches='tight')
     plt.close(fig)
     print("\n[SUCCESS] Fig.4 saved and data exported.")
 
@@ -466,17 +593,18 @@ def plot_mpp_decoherence_var(excel_writer, output_dir, user_sets_list):
     print("#" * 60)
 
     dt_list = DT_LIST_5
+    # source_methods = ["NOP", "OP_DP", "OP_BP"]
     source_methods = ["NOP", "OP"]
-    protocols = ['RR', 'PR']
+    protocols = ['SR', 'DR']
 
     all_plot_data = []
-    results = {f'{p}-{sm}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
+    results = {f'{sm}-{p}': {'ce_actual': [], 'dr': []} for p in protocols for sm in source_methods}
 
     for method in source_methods:
         for protocol in protocols:
             for dt in dt_list:
                 budget = FIXED_BUDGET
-                label = f'{protocol}-{method}'
+                label = f'{method}-{protocol}'
                 print(f"\n--- Running: {label}, Budget={budget} ---")
                 params = {
                     'length_network': LENGTH_NETWORK_DT_5, 'width_network': WIDTH_NETWORK_DT_5,
@@ -502,7 +630,7 @@ def plot_mpp_decoherence_var(excel_writer, output_dir, user_sets_list):
 
     pd.DataFrame(all_plot_data).to_excel(excel_writer, sheet_name='Fig5_Decoherence_Var', index=False)
 
-    fig, ax = create_dr_plot('Protocols vs Decoherence Time (Budget fixed): DR', x_label='Decoherence Time')
+    fig, ax = create_dr_plot('Protocols vs Decoherence Time', x_label='Decoherence Time')
     x_positions = np.arange(len(dt_list), dtype=float)
     plot_grouped_bars(
         ax, results, x_positions, [str(dt) for dt in dt_list],
@@ -553,10 +681,10 @@ if __name__ == "__main__":
         export_run_parameters(writer)
         #
         # plot_protocols_vs_budget(writer, output_directory, user_sets_1_2_5)                  # Fig.1
-        # plot_mpp_op_var(writer, output_directory, user_sets_1_2_5)                           # Fig.2
+        plot_mpp_op_var(writer, output_directory, user_sets_1_2_5)                           # Fig.2
         # plot_mpp_scalability_network_size_var(writer, output_directory, base_user_sets_3)    # Fig.3
         # plot_mpp_scalability_users_var(writer, output_directory, base_user_sets_4)           # Fig.4
-        plot_mpp_decoherence_var(writer, output_directory, user_sets_1_2_5)                  # Fig.5
+        # plot_mpp_decoherence_var(writer, output_directory, user_sets_1_2_5)                  # Fig.5
 
     print("\n\n" + "*" * 50)
     print("********** ALL SIMULATIONS COMPLETE   **********")

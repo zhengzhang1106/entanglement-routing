@@ -3,6 +3,7 @@ from steiner_tree_algorithms import approximate_steiner_tree
 
 pair_cost = 1
 
+
 class SourcePlacement:
     def __init__(self, topo):
         self.topo = topo
@@ -10,12 +11,6 @@ class SourcePlacement:
 
     def place_sources_for_request(self, user_set, method="OP", cost_budget=None, max_per_edge=1):
         """
-        Args:
-            user_set (list): User terminal nodes.
-            method (str): 'steiner_tree' or 'all_edges'.
-            cost_budget (int, optional): Total cost budget (must be even). Each source pair costs 2.
-            max_per_edge (int): Maximum number of source pairs per edge.
-
         Returns:
             list: List of edges [(u, v), ...] where sources are deployed.
                   Each tuple represents one source pair.
