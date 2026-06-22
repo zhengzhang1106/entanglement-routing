@@ -1,0 +1,6 @@
+demand_id,time_slot,src,dst,key_bits
+d0,0,London,Frankfurt,50000
+d1,0,London,Graz,40000
+d2,1,London,Graz,60000
+d3,1,Frankfurt,Graz,50000
+d4,2,London,Frankfurt,70000
