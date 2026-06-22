@@ -1,0 +1,10 @@
+node_id,node_type,lat,lon,altitude_km,connection_limit
+London,GS,51.5074,-0.1278,0,2
+Frankfurt,GS,50.1109,8.6821,0,2
+Graz,GS,47.0707,15.4395,0,2
+Tokyo,GS,35.6762,139.6503,0,2
+Melbourne,GS,-37.8136,144.9631,0,2
+SAT_R80_0,SAT,0,0,567,1
+SAT_R90_0,SAT,0,0,567,1
+HAP_0,HAP,50.0,5.0,20,1
+HAP_1,HAP,48.0,12.0,20,1
